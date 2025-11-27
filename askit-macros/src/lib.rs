@@ -22,7 +22,6 @@ pub fn askit(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// ```rust,ignore
 /// #[askit_agent(
 ///     kind = "Board",
-///     name = "core_board_in",
 ///     title = "Board In",
 ///     category = "Core",
 ///     inputs = ["*"],
@@ -121,16 +120,16 @@ fn expand_askit_agent(
         }
     }
 
-    let kind = parsed
-        .kind
-        .ok_or_else(|| syn::Error::new(Span::call_site(), "askit_agent: missing `kind`"))?;
-    let name = parsed
-        .name
-        .ok_or_else(|| syn::Error::new(Span::call_site(), "askit_agent: missing `name`"))?;
-
     let ident = &item.ident;
     let generics = item.generics.clone();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+    let kind = parsed
+        .kind
+        .ok_or_else(|| syn::Error::new(Span::call_site(), "askit_agent: missing `kind`"))?;
+    let name_tokens = parsed.name.map(|n| quote! { #n }).unwrap_or_else(|| {
+        quote! { concat!(module_path!(), "::", stringify!(#ident)) }
+    });
 
     let title = parsed.title.map(|t| quote! { .title(#t) });
     let description = parsed.description.map(|d| quote! { .description(#d) });
@@ -178,7 +177,7 @@ fn expand_askit_agent(
     let definition_builder = quote! {
         ::agent_stream_kit::AgentDefinition::new(
             #kind,
-            #name,
+            #name_tokens,
             Some(::agent_stream_kit::new_agent_boxed::<Self>),
         )
         #title

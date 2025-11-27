@@ -41,6 +41,7 @@ dependencies = [
 name = "askit-macros"
 version = "0.10.1"
 dependencies = [
+ "agent-stream-kit",
  "proc-macro2",
  "quote",
  "syn 2.0.111",

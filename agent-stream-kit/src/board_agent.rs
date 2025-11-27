@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use askit_macros::askit_agent;
+use async_trait::async_trait;
 use std::vec;
 
 use super::agent::{Agent, AsAgent, AsAgentData};
@@ -11,7 +11,6 @@ use super::value::AgentValue;
 
 #[askit_agent(
     kind = "Board",
-    name = "core_board_in",
     title = "Board In",
     category = "Core",
     inputs = ["*"],
@@ -95,7 +94,6 @@ impl AsAgent for BoardInAgent {
 
 #[askit_agent(
     kind = "Board",
-    name = "core_board_out",
     title = "Board Out",
     category = "Core",
     outputs = ["*"],
