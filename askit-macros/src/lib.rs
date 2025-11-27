@@ -56,6 +56,7 @@ struct AgentArgs {
     inputs: Vec<Expr>,
     outputs: Vec<Expr>,
     configs: Vec<ConfigSpec>,
+    displays: Vec<DisplaySpec>,
 }
 
 #[derive(Default)]
@@ -76,6 +77,25 @@ enum ConfigSpec {
     Object(CommonConfig),
 }
 
+enum DisplaySpec {
+    Unit(CommonDisplay),
+    Boolean(CommonDisplay),
+    Integer(CommonDisplay),
+    Number(CommonDisplay),
+    String(CommonDisplay),
+    Text(CommonDisplay),
+    Object(CommonDisplay),
+    Any(CommonDisplay),
+}
+
+#[derive(Default)]
+struct CommonDisplay {
+    name: Option<Expr>,
+    title: Option<Expr>,
+    description: Option<Expr>,
+    hide_title: bool,
+}
+
 fn expand_askit_agent(
     args: Punctuated<Meta, Comma>,
     item: ItemStruct,
@@ -89,6 +109,7 @@ fn expand_askit_agent(
         inputs: Vec::new(),
         outputs: Vec::new(),
         configs: Vec::new(),
+        displays: Vec::new(),
     };
 
     for meta in args {
@@ -140,6 +161,30 @@ fn expand_askit_agent(
             }
             Meta::List(ml) if ml.path.is_ident("unit_config") => {
                 parsed.configs.push(ConfigSpec::Unit(parse_common_config(ml, false)?));
+            }
+            Meta::List(ml) if ml.path.is_ident("unit_display") => {
+                parsed.displays.push(DisplaySpec::Unit(parse_common_display(ml)?));
+            }
+            Meta::List(ml) if ml.path.is_ident("boolean_display") => {
+                parsed.displays.push(DisplaySpec::Boolean(parse_common_display(ml)?));
+            }
+            Meta::List(ml) if ml.path.is_ident("integer_display") => {
+                parsed.displays.push(DisplaySpec::Integer(parse_common_display(ml)?));
+            }
+            Meta::List(ml) if ml.path.is_ident("number_display") => {
+                parsed.displays.push(DisplaySpec::Number(parse_common_display(ml)?));
+            }
+            Meta::List(ml) if ml.path.is_ident("string_display") => {
+                parsed.displays.push(DisplaySpec::String(parse_common_display(ml)?));
+            }
+            Meta::List(ml) if ml.path.is_ident("text_display") => {
+                parsed.displays.push(DisplaySpec::Text(parse_common_display(ml)?));
+            }
+            Meta::List(ml) if ml.path.is_ident("object_display") => {
+                parsed.displays.push(DisplaySpec::Object(parse_common_display(ml)?));
+            }
+            Meta::List(ml) if ml.path.is_ident("any_display") => {
+                parsed.displays.push(DisplaySpec::Any(parse_common_display(ml)?));
             }
             other => {
                 return Err(syn::Error::new_spanned(
@@ -317,6 +362,21 @@ fn expand_askit_agent(
         })
         .collect::<syn::Result<Vec<_>>>()?;
 
+    let display_calls = parsed
+        .displays
+        .into_iter()
+        .map(|disp| match disp {
+            DisplaySpec::Unit(c) => display_call("unit", c),
+            DisplaySpec::Boolean(c) => display_call("boolean", c),
+            DisplaySpec::Integer(c) => display_call("integer", c),
+            DisplaySpec::Number(c) => display_call("number", c),
+            DisplaySpec::String(c) => display_call("string", c),
+            DisplaySpec::Text(c) => display_call("text", c),
+            DisplaySpec::Object(c) => display_call("object", c),
+            DisplaySpec::Any(c) => display_call("*", c),
+        })
+        .collect::<syn::Result<Vec<_>>>()?;
+
     let definition_builder = quote! {
         ::agent_stream_kit::AgentDefinition::new(
             #kind,
@@ -329,6 +389,7 @@ fn expand_askit_agent(
         #inputs
         #outputs
         #(#config_calls)*
+        #(#display_calls)*
     };
 
     let expanded = quote! {
@@ -416,4 +477,68 @@ fn parse_common_config(list: MetaList, require_default: bool) -> syn::Result<Com
         ));
     }
     Ok(cfg)
+}
+
+fn parse_common_display(list: MetaList) -> syn::Result<CommonDisplay> {
+    let mut cfg = CommonDisplay::default();
+    let nested = list.parse_args_with(Punctuated::<Meta, Comma>::parse_terminated)?;
+
+    for meta in nested {
+        match meta {
+            Meta::NameValue(nv) if nv.path.is_ident("name") => {
+                cfg.name = Some(match &nv.value {
+                    Expr::Lit(expr_lit) => match &expr_lit.lit {
+                        Lit::Str(s) => syn::parse_str::<Expr>(&s.value())?,
+                        _ => nv.value.clone(),
+                    },
+                    _ => nv.value.clone(),
+                });
+            }
+            Meta::NameValue(nv) if nv.path.is_ident("title") => {
+                cfg.title = Some(nv.value.clone());
+            }
+            Meta::NameValue(nv) if nv.path.is_ident("description") => {
+                cfg.description = Some(nv.value.clone());
+            }
+            Meta::Path(p) if p.is_ident("hide_title") => {
+                cfg.hide_title = true;
+            }
+            other => {
+                return Err(syn::Error::new_spanned(
+                    other,
+                    "display supports name, title, description, hide_title",
+                ));
+            }
+        }
+    }
+
+    if cfg.name.is_none() {
+        return Err(syn::Error::new(list.span(), "display missing `name`"));
+    }
+    Ok(cfg)
+}
+
+fn display_call(type_name: &str, cfg: CommonDisplay) -> syn::Result<proc_macro2::TokenStream> {
+    let name = cfg
+        .name
+        .ok_or_else(|| syn::Error::new(Span::call_site(), "display missing `name`"))?;
+    let title = cfg.title.map(|t| quote! { let entry = entry.title(#t); });
+    let description = cfg
+        .description
+        .map(|d| quote! { let entry = entry.description(#d); });
+    let hide_title = if cfg.hide_title {
+        quote! { let entry = entry.hide_title(); }
+    } else {
+        quote! {}
+    };
+
+    Ok(quote! {
+        .custom_display_config_with(#name, #type_name, |entry| {
+            let entry = entry;
+            #title
+            #description
+            #hide_title
+            entry
+        })
+    })
 }
