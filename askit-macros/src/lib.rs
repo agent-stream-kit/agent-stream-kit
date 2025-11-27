@@ -50,9 +50,9 @@ struct AgentArgs {
     name: Option<LitStr>,
     title: Option<LitStr>,
     description: Option<LitStr>,
-    category: Option<LitStr>,
-    inputs: Vec<LitStr>,
-    outputs: Vec<LitStr>,
+    category: Option<Expr>,
+    inputs: Vec<Expr>,
+    outputs: Vec<Expr>,
     string_config: Option<StringConfig>,
 }
 
@@ -94,19 +94,19 @@ fn expand_askit_agent(
                 parsed.description = Some(expect_lit_str(nv)?);
             }
             Meta::NameValue(nv) if nv.path.is_ident("category") => {
-                parsed.category = Some(expect_lit_str(nv)?);
+                parsed.category = Some(nv.value);
             }
             Meta::NameValue(nv) if nv.path.is_ident("inputs") => {
-                parsed.inputs = parse_lit_str_array(nv.value)?;
+                parsed.inputs = parse_expr_array(nv.value)?;
             }
             Meta::NameValue(nv) if nv.path.is_ident("outputs") => {
-                parsed.outputs = parse_lit_str_array(nv.value)?;
+                parsed.outputs = parse_expr_array(nv.value)?;
             }
             Meta::List(ml) if ml.path.is_ident("inputs") => {
-                parsed.inputs = collect_lit_strs(ml)?;
+                parsed.inputs = collect_exprs(ml)?;
             }
             Meta::List(ml) if ml.path.is_ident("outputs") => {
-                parsed.outputs = collect_lit_strs(ml)?;
+                parsed.outputs = collect_exprs(ml)?;
             }
             Meta::List(ml) if ml.path.is_ident("string_config") => {
                 parsed.string_config = Some(parse_string_config(ml)?);
@@ -221,38 +221,18 @@ fn expect_lit_str(nv: MetaNameValue) -> syn::Result<LitStr> {
     }
 }
 
-fn collect_lit_strs(list: MetaList) -> syn::Result<Vec<LitStr>> {
-    let values = list.parse_args_with(Punctuated::<LitStr, Comma>::parse_terminated)?;
+fn collect_exprs(list: MetaList) -> syn::Result<Vec<Expr>> {
+    let values = list.parse_args_with(Punctuated::<Expr, Comma>::parse_terminated)?;
     Ok(values.into_iter().collect())
 }
 
-fn parse_lit_str_array(expr: Expr) -> syn::Result<Vec<LitStr>> {
+fn parse_expr_array(expr: Expr) -> syn::Result<Vec<Expr>> {
     if let Expr::Array(arr) = expr {
-        let mut out = Vec::new();
-        for elem in arr.elems {
-            match elem {
-                Expr::Lit(expr_lit) => match expr_lit.lit {
-                    Lit::Str(s) => out.push(s),
-                    other => {
-                        return Err(syn::Error::new_spanned(
-                            other,
-                            "inputs/outputs expect string literals",
-                        ));
-                    }
-                },
-                other => {
-                    return Err(syn::Error::new_spanned(
-                        other,
-                        "inputs/outputs expect string literals",
-                    ));
-                }
-            }
-        }
-        Ok(out)
+        Ok(arr.elems.into_iter().collect())
     } else {
         Err(syn::Error::new_spanned(
             expr,
-            "inputs/outputs expect array of string literals",
+            "inputs/outputs expect array expressions",
         ))
     }
 }
