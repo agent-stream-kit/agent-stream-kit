@@ -7,7 +7,7 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
 use syn::{
-    Expr, ItemStruct, Lit, LitStr, Meta, MetaList, MetaNameValue, parse_macro_input,
+    Expr, ItemStruct, Lit, Meta, MetaList, parse_macro_input, parse_quote,
     punctuated::Punctuated, token::Comma,
 };
 
@@ -46,10 +46,10 @@ pub fn askit_agent(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 struct AgentArgs {
-    kind: Option<LitStr>,
-    name: Option<LitStr>,
-    title: Option<LitStr>,
-    description: Option<LitStr>,
+    kind: Option<Expr>,
+    name: Option<Expr>,
+    title: Option<Expr>,
+    description: Option<Expr>,
     category: Option<Expr>,
     inputs: Vec<Expr>,
     outputs: Vec<Expr>,
@@ -60,8 +60,8 @@ struct AgentArgs {
 struct StringConfig {
     name: Option<Expr>,
     default: Option<Expr>,
-    title: Option<LitStr>,
-    description: Option<LitStr>,
+    title: Option<Expr>,
+    description: Option<Expr>,
 }
 
 fn expand_askit_agent(
@@ -82,16 +82,16 @@ fn expand_askit_agent(
     for meta in args {
         match meta {
             Meta::NameValue(nv) if nv.path.is_ident("kind") => {
-                parsed.kind = Some(expect_lit_str(nv)?);
+                parsed.kind = Some(nv.value);
             }
             Meta::NameValue(nv) if nv.path.is_ident("name") => {
-                parsed.name = Some(expect_lit_str(nv)?);
+                parsed.name = Some(nv.value);
             }
             Meta::NameValue(nv) if nv.path.is_ident("title") => {
-                parsed.title = Some(expect_lit_str(nv)?);
+                parsed.title = Some(nv.value);
             }
             Meta::NameValue(nv) if nv.path.is_ident("description") => {
-                parsed.description = Some(expect_lit_str(nv)?);
+                parsed.description = Some(nv.value);
             }
             Meta::NameValue(nv) if nv.path.is_ident("category") => {
                 parsed.category = Some(nv.value);
@@ -124,9 +124,7 @@ fn expand_askit_agent(
     let generics = item.generics.clone();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    let kind = parsed
-        .kind
-        .ok_or_else(|| syn::Error::new(Span::call_site(), "askit_agent: missing `kind`"))?;
+    let kind = parsed.kind.unwrap_or_else(|| parse_quote! { "Agent" });
     let name_tokens = parsed.name.map(|n| quote! { #n }).unwrap_or_else(|| {
         quote! { concat!(module_path!(), "::", stringify!(#ident)) }
     });
@@ -211,16 +209,6 @@ fn expand_askit_agent(
     Ok(expanded)
 }
 
-fn expect_lit_str(nv: MetaNameValue) -> syn::Result<LitStr> {
-    match nv.value {
-        Expr::Lit(expr_lit) => match expr_lit.lit {
-            Lit::Str(s) => Ok(s),
-            other => Err(syn::Error::new_spanned(other, "expected string literal")),
-        },
-        other => Err(syn::Error::new_spanned(other, "expected string literal")),
-    }
-}
-
 fn collect_exprs(list: MetaList) -> syn::Result<Vec<Expr>> {
     let values = list.parse_args_with(Punctuated::<Expr, Comma>::parse_terminated)?;
     Ok(values.into_iter().collect())
@@ -256,10 +244,10 @@ fn parse_string_config(list: MetaList) -> syn::Result<StringConfig> {
                 cfg.default = Some(nv.value.clone());
             }
             Meta::NameValue(nv) if nv.path.is_ident("title") => {
-                cfg.title = Some(expect_lit_str(nv)?);
+                cfg.title = Some(nv.value.clone());
             }
             Meta::NameValue(nv) if nv.path.is_ident("description") => {
-                cfg.description = Some(expect_lit_str(nv)?);
+                cfg.description = Some(nv.value.clone());
             }
             other => {
                 return Err(syn::Error::new_spanned(
