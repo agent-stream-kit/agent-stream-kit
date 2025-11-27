@@ -178,7 +178,7 @@ fn expand_askit_agent(
         ::agent_stream_kit::AgentDefinition::new(
             #kind,
             #name_tokens,
-            Some(::agent_stream_kit::new_agent_boxed::<Self>),
+            Some(::agent_stream_kit::new_agent_boxed::<#ident>),
         )
         #title
         #description
@@ -198,6 +198,12 @@ fn expand_askit_agent(
 
             pub fn register(askit: &::agent_stream_kit::ASKit) {
                 askit.register_agent(Self::agent_definition());
+            }
+        }
+
+        ::agent_stream_kit::inventory::submit! {
+            ::agent_stream_kit::AgentRegistration {
+                build: || #definition_builder,
             }
         }
     };

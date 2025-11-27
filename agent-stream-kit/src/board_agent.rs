@@ -9,6 +9,8 @@ use super::context::AgentContext;
 use super::error::AgentError;
 use super::value::AgentValue;
 
+static CONFIG_BOARD_NAME: &str = "$board";
+
 #[askit_agent(
     kind = "Board",
     title = "Board In",
@@ -183,11 +185,4 @@ impl AsAgent for BoardOutAgent {
         }
         Ok(())
     }
-}
-
-static CONFIG_BOARD_NAME: &str = "$board";
-
-pub fn register_agents(askit: &ASKit) {
-    BoardInAgent::register(askit);
-    BoardOutAgent::register(askit);
 }
