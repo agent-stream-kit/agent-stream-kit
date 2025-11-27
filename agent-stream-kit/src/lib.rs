@@ -17,6 +17,9 @@ mod output;
 mod runtime;
 mod value;
 
+// Re-export the crate under its canonical name for proc-macros.
+pub extern crate self as agent_stream_kit;
+
 pub use agent::{Agent, AgentStatus, AsAgent, AsAgentData, agent_new, new_agent_boxed};
 pub use askit::{ASKit, ASKitEvent, ASKitObserver};
 pub use config::{AgentConfigs, AgentConfigsMap};
