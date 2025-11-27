@@ -37,6 +37,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "askit-macros"
+version = "0.10.1"
+
+[[package]]
 name = "async-trait"
 version = "0.1.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"

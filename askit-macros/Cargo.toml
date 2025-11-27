@@ -1,0 +1,10 @@
+[package]
+name = "askit-macros"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Procedural macro helpers for agent-stream-kit"
+
+[lib]
+proc-macro = true
