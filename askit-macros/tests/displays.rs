@@ -2,7 +2,7 @@ use agent_stream_kit::{AgentConfigs, AgentError, AsAgent, AsAgentData, async_tra
 use askit_macros::askit_agent;
 
 const UNIT_KEY: &str = "unit_disp";
-const BOOL_KEY: &str = "bool_disp";
+const BOOLEAN_KEY: &str = "boolean_disp";
 const INTEGER_KEY: &str = "integer_disp";
 const NUMBER_KEY: &str = "number_disp";
 const STRING_KEY: &str = "string_disp";
@@ -14,7 +14,7 @@ const ANY_KEY: &str = "any";
     title = "Display Agent",
     category = "Tests",
     unit_display(name = UNIT_KEY),
-    boolean_display(name = BOOL_KEY),
+    boolean_display(name = BOOLEAN_KEY),
     integer_display(name = INTEGER_KEY, description = "Integer description"),
     number_display(name = NUMBER_KEY),
     string_display(name = STRING_KEY, title = "String Title"),
@@ -71,7 +71,10 @@ fn display_entries_are_generated() {
     assert_eq!(int_disp.description.as_deref(), Some("Integer description"));
 
     assert_eq!(map.get(UNIT_KEY).unwrap().type_.as_deref(), Some("unit"));
-    assert_eq!(map.get(BOOL_KEY).unwrap().type_.as_deref(), Some("boolean"));
+    assert_eq!(
+        map.get(BOOLEAN_KEY).unwrap().type_.as_deref(),
+        Some("boolean")
+    );
     assert_eq!(
         map.get(INTEGER_KEY).unwrap().type_.as_deref(),
         Some("integer")

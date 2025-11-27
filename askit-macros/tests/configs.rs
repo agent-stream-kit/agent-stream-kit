@@ -4,25 +4,25 @@ use askit_macros::askit_agent;
 use std::collections::HashMap;
 
 const UNIT_KEY: &str = "unit";
-const BOOL_KEY: &str = "bool";
-const INT_KEY: &str = "int";
-const NUM_KEY: &str = "num";
-const STR_KEY: &str = "str";
-const TXT_KEY: &str = "txt";
-const OBJ_KEY: &str = "obj";
+const BOOLEAN_KEY: &str = "boolean";
+const INTEGER_KEY: &str = "integer";
+const NUMBER_KEY: &str = "number";
+const STRING_KEY: &str = "string";
+const TEXT_KEY: &str = "text";
+const OBJECT_KEY: &str = "object";
 
 #[askit_agent(
     kind = "Test",
     title = "Config Agent",
     category = "Tests",
     unit_config(name = UNIT_KEY),
-    boolean_config(name = BOOL_KEY, default = true, title = "Bool Title"),
-    integer_config(name = INT_KEY, default = 7),
-    number_config(name = NUM_KEY, default = 3.14, description = "pi"),
-    string_config(name = STR_KEY, default = "hello"),
-    text_config(name = TXT_KEY, default = "long"),
+    boolean_config(name = BOOLEAN_KEY, default = true, title = "Bool Title"),
+    integer_config(name = INTEGER_KEY, default = 7),
+    number_config(name = NUMBER_KEY, default = 3.14, description = "pi"),
+    string_config(name = STRING_KEY, default = "hello"),
+    text_config(name = TEXT_KEY, default = "long"),
     object_config(
-        name = OBJ_KEY,
+        name = OBJECT_KEY,
         default = AgentValue::object_default(),
         title = "Obj",
         description = "Obj desc"
@@ -75,17 +75,17 @@ fn config_entries_are_generated() {
     assert_eq!(configs[UNIT_KEY].type_.as_deref(), Some("unit"));
     assert_eq!(configs[UNIT_KEY].value, AgentValue::unit());
 
-    let bool_entry = &configs[BOOL_KEY];
+    let bool_entry = &configs[BOOLEAN_KEY];
     assert_eq!(bool_entry.type_.as_deref(), Some("boolean"));
     assert_eq!(bool_entry.value, AgentValue::boolean(true));
     assert_eq!(bool_entry.title.as_deref(), Some("Bool Title"));
 
-    assert_eq!(configs[INT_KEY].value, AgentValue::integer(7));
-    assert_eq!(configs[NUM_KEY].description.as_deref(), Some("pi"));
-    assert_eq!(configs[STR_KEY].value, AgentValue::string("hello"));
-    assert_eq!(configs[TXT_KEY].value, AgentValue::string("long"));
+    assert_eq!(configs[INTEGER_KEY].value, AgentValue::integer(7));
+    assert_eq!(configs[NUMBER_KEY].description.as_deref(), Some("pi"));
+    assert_eq!(configs[STRING_KEY].value, AgentValue::string("hello"));
+    assert_eq!(configs[TEXT_KEY].value, AgentValue::string("long"));
 
-    let obj_entry = &configs[OBJ_KEY];
+    let obj_entry = &configs[OBJECT_KEY];
     assert_eq!(obj_entry.type_.as_deref(), Some("object"));
     assert_eq!(obj_entry.title.as_deref(), Some("Obj"));
     assert_eq!(obj_entry.description.as_deref(), Some("Obj desc"));

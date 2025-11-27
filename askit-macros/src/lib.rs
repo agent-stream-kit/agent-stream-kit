@@ -142,25 +142,25 @@ fn expand_askit_agent(
                 parsed.outputs = collect_exprs(ml)?;
             }
             Meta::List(ml) if ml.path.is_ident("string_config") => {
-                parsed.configs.push(ConfigSpec::String(parse_common_config(ml, true)?));
+                parsed.configs.push(ConfigSpec::String(parse_common_config(ml)?));
             }
             Meta::List(ml) if ml.path.is_ident("text_config") => {
-                parsed.configs.push(ConfigSpec::Text(parse_common_config(ml, true)?));
+                parsed.configs.push(ConfigSpec::Text(parse_common_config(ml)?));
             }
             Meta::List(ml) if ml.path.is_ident("boolean_config") => {
-                parsed.configs.push(ConfigSpec::Boolean(parse_common_config(ml, true)?));
+                parsed.configs.push(ConfigSpec::Boolean(parse_common_config(ml)?));
             }
             Meta::List(ml) if ml.path.is_ident("integer_config") => {
-                parsed.configs.push(ConfigSpec::Integer(parse_common_config(ml, true)?));
+                parsed.configs.push(ConfigSpec::Integer(parse_common_config(ml)?));
             }
             Meta::List(ml) if ml.path.is_ident("number_config") => {
-                parsed.configs.push(ConfigSpec::Number(parse_common_config(ml, true)?));
+                parsed.configs.push(ConfigSpec::Number(parse_common_config(ml)?));
             }
             Meta::List(ml) if ml.path.is_ident("object_config") => {
-                parsed.configs.push(ConfigSpec::Object(parse_common_config(ml, true)?));
+                parsed.configs.push(ConfigSpec::Object(parse_common_config(ml)?));
             }
             Meta::List(ml) if ml.path.is_ident("unit_config") => {
-                parsed.configs.push(ConfigSpec::Unit(parse_common_config(ml, false)?));
+                parsed.configs.push(ConfigSpec::Unit(parse_common_config(ml)?));
             }
             Meta::List(ml) if ml.path.is_ident("unit_display") => {
                 parsed.displays.push(DisplaySpec::Unit(parse_common_display(ml)?));
@@ -431,7 +431,7 @@ fn parse_expr_array(expr: Expr) -> syn::Result<Vec<Expr>> {
     }
 }
 
-fn parse_common_config(list: MetaList, require_default: bool) -> syn::Result<CommonConfig> {
+fn parse_common_config(list: MetaList) -> syn::Result<CommonConfig> {
     let mut cfg = CommonConfig::default();
     let nested = list.parse_args_with(Punctuated::<Meta, Comma>::parse_terminated)?;
 
@@ -468,12 +468,6 @@ fn parse_common_config(list: MetaList, require_default: bool) -> syn::Result<Com
         return Err(syn::Error::new(
             list.span(),
             "config missing `name`",
-        ));
-    }
-    if require_default && cfg.default.is_none() {
-        return Err(syn::Error::new(
-            list.span(),
-            "config missing `default`",
         ));
     }
     Ok(cfg)
