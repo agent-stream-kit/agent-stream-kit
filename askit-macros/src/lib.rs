@@ -7,8 +7,10 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
 use syn::{
-    Expr, ItemStruct, Lit, Meta, MetaList, parse_macro_input, parse_quote, punctuated::Punctuated,
-    spanned::Spanned, token::Comma,
+    spanned::Spanned,
+    parse_macro_input, parse_quote,
+    punctuated::Punctuated,
+    Expr, ItemStruct, Lit, Meta, MetaList, token::Comma,
 };
 
 #[proc_macro_attribute]
@@ -53,15 +55,25 @@ struct AgentArgs {
     category: Option<Expr>,
     inputs: Vec<Expr>,
     outputs: Vec<Expr>,
-    string_config: Option<StringConfig>,
+    configs: Vec<ConfigSpec>,
 }
 
 #[derive(Default)]
-struct StringConfig {
+struct CommonConfig {
     name: Option<Expr>,
     default: Option<Expr>,
     title: Option<Expr>,
     description: Option<Expr>,
+}
+
+enum ConfigSpec {
+    Unit(CommonConfig),
+    Boolean(CommonConfig),
+    Integer(CommonConfig),
+    Number(CommonConfig),
+    String(CommonConfig),
+    Text(CommonConfig),
+    Object(CommonConfig),
 }
 
 fn expand_askit_agent(
@@ -76,7 +88,7 @@ fn expand_askit_agent(
         category: None,
         inputs: Vec::new(),
         outputs: Vec::new(),
-        string_config: None,
+        configs: Vec::new(),
     };
 
     for meta in args {
@@ -109,7 +121,25 @@ fn expand_askit_agent(
                 parsed.outputs = collect_exprs(ml)?;
             }
             Meta::List(ml) if ml.path.is_ident("string_config") => {
-                parsed.string_config = Some(parse_string_config(ml)?);
+                parsed.configs.push(ConfigSpec::String(parse_common_config(ml, true)?));
+            }
+            Meta::List(ml) if ml.path.is_ident("text_config") => {
+                parsed.configs.push(ConfigSpec::Text(parse_common_config(ml, true)?));
+            }
+            Meta::List(ml) if ml.path.is_ident("boolean_config") => {
+                parsed.configs.push(ConfigSpec::Boolean(parse_common_config(ml, true)?));
+            }
+            Meta::List(ml) if ml.path.is_ident("integer_config") => {
+                parsed.configs.push(ConfigSpec::Integer(parse_common_config(ml, true)?));
+            }
+            Meta::List(ml) if ml.path.is_ident("number_config") => {
+                parsed.configs.push(ConfigSpec::Number(parse_common_config(ml, true)?));
+            }
+            Meta::List(ml) if ml.path.is_ident("object_config") => {
+                parsed.configs.push(ConfigSpec::Object(parse_common_config(ml, true)?));
+            }
+            Meta::List(ml) if ml.path.is_ident("unit_config") => {
+                parsed.configs.push(ConfigSpec::Unit(parse_common_config(ml, false)?));
             }
             other => {
                 return Err(syn::Error::new_spanned(
@@ -153,30 +183,139 @@ fn expand_askit_agent(
         quote! { .outputs(vec![#(#values),*]) }
     };
 
-    let string_config = parsed
-        .string_config
-        .map(|cfg| {
-            let name = cfg.name.ok_or_else(|| {
-                syn::Error::new(Span::call_site(), "string_config missing `name`")
-            })?;
-            let default = cfg.default.ok_or_else(|| {
-                syn::Error::new(Span::call_site(), "string_config missing `default`")
-            })?;
-            let title = cfg.title.map(|t| quote! { let entry = entry.title(#t); });
-            let description = cfg
-                .description
-                .map(|d| quote! { let entry = entry.description(#d); });
-
-            Ok::<_, syn::Error>(quote! {
-                .string_config_with(#name, #default, |entry| {
-                    let entry = entry;
-                    #title
-                    #description
-                    entry
+    let config_calls = parsed
+        .configs
+        .into_iter()
+        .map(|cfg| match cfg {
+            ConfigSpec::Unit(c) => {
+                let name = c.name.ok_or_else(|| {
+                    syn::Error::new(Span::call_site(), "unit_config missing `name`")
+                })?;
+                let title = c.title.map(|t| quote! { let entry = entry.title(#t); });
+                let description = c
+                    .description
+                    .map(|d| quote! { let entry = entry.description(#d); });
+                Ok(quote! {
+                    .unit_config_with(#name, |entry| {
+                        let entry = entry;
+                        #title
+                        #description
+                        entry
+                    })
                 })
-            })
+            }
+            ConfigSpec::Boolean(c) => {
+                let name = c.name.ok_or_else(|| {
+                    syn::Error::new(Span::call_site(), "boolean_config missing `name`")
+                })?;
+                let default = c.default.unwrap_or_else(|| parse_quote! { false });
+                let title = c.title.map(|t| quote! { let entry = entry.title(#t); });
+                let description = c
+                    .description
+                    .map(|d| quote! { let entry = entry.description(#d); });
+                Ok(quote! {
+                    .boolean_config_with(#name, #default, |entry| {
+                        let entry = entry;
+                        #title
+                        #description
+                        entry
+                    })
+                })
+            }
+            ConfigSpec::Integer(c) => {
+                let name = c.name.ok_or_else(|| {
+                    syn::Error::new(Span::call_site(), "integer_config missing `name`")
+                })?;
+                let default = c.default.unwrap_or_else(|| parse_quote! { 0i64 });
+                let title = c.title.map(|t| quote! { let entry = entry.title(#t); });
+                let description = c
+                    .description
+                    .map(|d| quote! { let entry = entry.description(#d); });
+                Ok(quote! {
+                    .integer_config_with(#name, #default, |entry| {
+                        let entry = entry;
+                        #title
+                        #description
+                        entry
+                    })
+                })
+            }
+            ConfigSpec::Number(c) => {
+                let name = c.name.ok_or_else(|| {
+                    syn::Error::new(Span::call_site(), "number_config missing `name`")
+                })?;
+                let default = c.default.unwrap_or_else(|| parse_quote! { 0.0f64 });
+                let title = c.title.map(|t| quote! { let entry = entry.title(#t); });
+                let description = c
+                    .description
+                    .map(|d| quote! { let entry = entry.description(#d); });
+                Ok(quote! {
+                    .number_config_with(#name, #default, |entry| {
+                        let entry = entry;
+                        #title
+                        #description
+                        entry
+                    })
+                })
+            }
+            ConfigSpec::String(c) => {
+                let name = c.name.ok_or_else(|| {
+                    syn::Error::new(Span::call_site(), "string_config missing `name`")
+                })?;
+                let default = c.default.unwrap_or_else(|| parse_quote! { "" });
+                let title = c.title.map(|t| quote! { let entry = entry.title(#t); });
+                let description = c
+                    .description
+                    .map(|d| quote! { let entry = entry.description(#d); });
+                Ok(quote! {
+                    .string_config_with(#name, #default, |entry| {
+                        let entry = entry;
+                        #title
+                        #description
+                        entry
+                    })
+                })
+            }
+            ConfigSpec::Text(c) => {
+                let name = c.name.ok_or_else(|| {
+                    syn::Error::new(Span::call_site(), "text_config missing `name`")
+                })?;
+                let default = c.default.unwrap_or_else(|| parse_quote! { "" });
+                let title = c.title.map(|t| quote! { let entry = entry.title(#t); });
+                let description = c
+                    .description
+                    .map(|d| quote! { let entry = entry.description(#d); });
+                Ok(quote! {
+                    .text_config_with(#name, #default, |entry| {
+                        let entry = entry;
+                        #title
+                        #description
+                        entry
+                    })
+                })
+            }
+            ConfigSpec::Object(c) => {
+                let name = c.name.ok_or_else(|| {
+                    syn::Error::new(Span::call_site(), "object_config missing `name`")
+                })?;
+                let default = c.default.unwrap_or_else(|| {
+                    parse_quote! { ::agent_stream_kit::AgentValue::object_default() }
+                });
+                let title = c.title.map(|t| quote! { let entry = entry.title(#t); });
+                let description = c
+                    .description
+                    .map(|d| quote! { let entry = entry.description(#d); });
+                Ok(quote! {
+                    .object_config_with(#name, #default, |entry| {
+                        let entry = entry;
+                        #title
+                        #description
+                        entry
+                    })
+                })
+            }
         })
-        .transpose()?;
+        .collect::<syn::Result<Vec<_>>>()?;
 
     let definition_builder = quote! {
         ::agent_stream_kit::AgentDefinition::new(
@@ -189,7 +328,7 @@ fn expand_askit_agent(
         #category
         #inputs
         #outputs
-        #string_config
+        #(#config_calls)*
     };
 
     let expanded = quote! {
@@ -231,8 +370,8 @@ fn parse_expr_array(expr: Expr) -> syn::Result<Vec<Expr>> {
     }
 }
 
-fn parse_string_config(list: MetaList) -> syn::Result<StringConfig> {
-    let mut cfg = StringConfig::default();
+fn parse_common_config(list: MetaList, require_default: bool) -> syn::Result<CommonConfig> {
+    let mut cfg = CommonConfig::default();
     let nested = list.parse_args_with(Punctuated::<Meta, Comma>::parse_terminated)?;
 
     for meta in nested {
@@ -258,14 +397,23 @@ fn parse_string_config(list: MetaList) -> syn::Result<StringConfig> {
             other => {
                 return Err(syn::Error::new_spanned(
                     other,
-                    "string_config supports name, default, title, description",
+                    "config supports name, default, title, description",
                 ));
             }
         }
     }
 
     if cfg.name.is_none() {
-        return Err(syn::Error::new(list.span(), "string_config missing `name`"));
+        return Err(syn::Error::new(
+            list.span(),
+            "config missing `name`",
+        ));
+    }
+    if require_default && cfg.default.is_none() {
+        return Err(syn::Error::new(
+            list.span(),
+            "config missing `default`",
+        ));
     }
     Ok(cfg)
 }
