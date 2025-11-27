@@ -7,8 +7,8 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
 use syn::{
-    Expr, ItemStruct, Lit, Meta, MetaList, parse_macro_input, parse_quote,
-    punctuated::Punctuated, token::Comma,
+    Expr, ItemStruct, Lit, Meta, MetaList, parse_macro_input, parse_quote, punctuated::Punctuated,
+    spanned::Spanned, token::Comma,
 };
 
 #[proc_macro_attribute]
@@ -129,9 +129,15 @@ fn expand_askit_agent(
         quote! { concat!(module_path!(), "::", stringify!(#ident)) }
     });
 
-    let title = parsed.title.map(|t| quote! { .title(#t) });
+    let title = parsed
+        .title
+        .ok_or_else(|| syn::Error::new(Span::call_site(), "askit_agent: missing `title`"))?;
+    let category = parsed
+        .category
+        .ok_or_else(|| syn::Error::new(Span::call_site(), "askit_agent: missing `category`"))?;
+    let title = quote! { .title(#title) };
     let description = parsed.description.map(|d| quote! { .description(#d) });
-    let category = parsed.category.map(|c| quote! { .category(#c) });
+    let category = quote! { .category(#category) };
 
     let inputs = if parsed.inputs.is_empty() {
         quote! {}
@@ -256,6 +262,10 @@ fn parse_string_config(list: MetaList) -> syn::Result<StringConfig> {
                 ));
             }
         }
+    }
+
+    if cfg.name.is_none() {
+        return Err(syn::Error::new(list.span(), "string_config missing `name`"));
     }
     Ok(cfg)
 }
