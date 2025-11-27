@@ -2,6 +2,8 @@ use agent_stream_kit::AgentContext;
 use agent_stream_kit::{AgentConfigs, AgentError, AgentValue, AsAgent, AsAgentData, async_trait};
 use askit_macros::askit_agent;
 
+static CONFIG_KEY: &str = "config_key";
+
 #[askit_agent(kind = "Test", title = "DefaultName", category = "Tests")]
 struct MyAgent {
     data: AsAgentData,
@@ -92,8 +94,6 @@ impl AsAgent for MyAgentExplicit {
         Ok(())
     }
 }
-
-static CONFIG_KEY: &str = "config_key";
 
 #[test]
 fn explicit_fields_and_configs_are_set() {
