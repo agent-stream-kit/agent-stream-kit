@@ -92,11 +92,20 @@ enum DisplaySpec {
     Text(CommonDisplay),
     Object(CommonDisplay),
     Any(CommonDisplay),
+    Custom(CustomDisplay),
 }
 
 #[derive(Default)]
 struct CommonDisplay {
     name: Option<Expr>,
+    title: Option<Expr>,
+    description: Option<Expr>,
+    hide_title: bool,
+}
+
+struct CustomDisplay {
+    name: Expr,
+    type_: Expr,
     title: Option<Expr>,
     description: Option<Expr>,
     hide_title: bool,
@@ -284,6 +293,11 @@ fn expand_askit_agent(
                 parsed
                     .displays
                     .push(DisplaySpec::Any(parse_common_display(ml)?));
+            }
+            Meta::List(ml) if ml.path.is_ident("custom_display_config") => {
+                parsed
+                    .displays
+                    .push(DisplaySpec::Custom(parse_custom_display(ml)?));
             }
             other => {
                 return Err(syn::Error::new_spanned(
@@ -658,6 +672,33 @@ fn expand_askit_agent(
             DisplaySpec::Text(c) => display_call("text", c),
             DisplaySpec::Object(c) => display_call("object", c),
             DisplaySpec::Any(c) => display_call("*", c),
+            DisplaySpec::Custom(c) => {
+                let CustomDisplay {
+                    name,
+                    type_,
+                    title,
+                    description,
+                    hide_title,
+                } = c;
+                let title = title.map(|t| quote! { let entry = entry.title(#t); });
+                let description =
+                    description.map(|d| quote! { let entry = entry.description(#d); });
+                let hide_title = if hide_title {
+                    quote! { let entry = entry.hide_title(); }
+                } else {
+                    quote! {}
+                };
+
+                Ok(quote! {
+                    .custom_display_config_with(#name, #type_, |entry| {
+                        let entry = entry;
+                        #title
+                        #description
+                        #hide_title
+                        entry
+                    })
+                })
+            }
         })
         .collect::<syn::Result<Vec<_>>>()?;
 
@@ -837,6 +878,55 @@ fn parse_common_display(list: MetaList) -> syn::Result<CommonDisplay> {
         return Err(syn::Error::new(list.span(), "display missing `name`"));
     }
     Ok(cfg)
+}
+
+fn parse_custom_display(list: MetaList) -> syn::Result<CustomDisplay> {
+    let mut name = None;
+    let mut type_ = None;
+    let mut title = None;
+    let mut description = None;
+    let mut hide_title = false;
+    let nested = list.parse_args_with(Punctuated::<Meta, Comma>::parse_terminated)?;
+
+    for meta in nested {
+        match meta {
+            Meta::NameValue(nv) if nv.path.is_ident("name") => {
+                name = Some(nv.value.clone());
+            }
+            Meta::NameValue(nv) if nv.path.is_ident("type") => {
+                type_ = Some(nv.value.clone());
+            }
+            Meta::NameValue(nv) if nv.path.is_ident("type_") => {
+                type_ = Some(nv.value.clone());
+            }
+            Meta::NameValue(nv) if nv.path.is_ident("title") => {
+                title = Some(nv.value.clone());
+            }
+            Meta::NameValue(nv) if nv.path.is_ident("description") => {
+                description = Some(nv.value.clone());
+            }
+            Meta::Path(p) if p.is_ident("hide_title") => {
+                hide_title = true;
+            }
+            other => {
+                return Err(syn::Error::new_spanned(
+                    other,
+                    "display supports name, type/type_, title, description, hide_title",
+                ));
+            }
+        }
+    }
+
+    let name = name.ok_or_else(|| syn::Error::new(list.span(), "display missing `name`"))?;
+    let type_ = type_.ok_or_else(|| syn::Error::new(list.span(), "display missing `type`"))?;
+
+    Ok(CustomDisplay {
+        name,
+        type_,
+        title,
+        description,
+        hide_title,
+    })
 }
 
 fn display_call(type_name: &str, cfg: CommonDisplay) -> syn::Result<proc_macro2::TokenStream> {
