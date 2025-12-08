@@ -5,7 +5,7 @@
 
 use proc_macro::TokenStream;
 use proc_macro2::Span;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::{
     Expr, ItemStruct, Meta, MetaList, Type, parse_macro_input, parse_quote, punctuated::Punctuated,
     spanned::Spanned, token::Comma,
@@ -483,26 +483,7 @@ fn expand_askit_agent(
                     })
                 })
             }
-            ConfigSpec::Custom(c) => {
-                let CustomConfig {
-                    name,
-                    default,
-                    type_,
-                    title,
-                    description,
-                } = c;
-                let title = title.map(|t| quote! { let entry = entry.title(#t); });
-                let description =
-                    description.map(|d| quote! { let entry = entry.description(#d); });
-                Ok(quote! {
-                    .custom_config_with(#name, #default, #type_, |entry| {
-                        let entry = entry;
-                        #title
-                        #description
-                        entry
-                    })
-                })
-            }
+            ConfigSpec::Custom(c) => custom_config_call("custom_config_with", c),
         })
         .collect::<syn::Result<Vec<_>>>()?;
 
@@ -637,26 +618,7 @@ fn expand_askit_agent(
                     })
                 })
             }
-            ConfigSpec::Custom(c) => {
-                let CustomConfig {
-                    name,
-                    default,
-                    type_,
-                    title,
-                    description,
-                } = c;
-                let title = title.map(|t| quote! { let entry = entry.title(#t); });
-                let description =
-                    description.map(|d| quote! { let entry = entry.description(#d); });
-                Ok(quote! {
-                    .custom_global_config_with(#name, #default, #type_, |entry| {
-                        let entry = entry;
-                        #title
-                        #description
-                        entry
-                    })
-                })
-            }
+            ConfigSpec::Custom(c) => custom_config_call("custom_global_config_with", c),
         })
         .collect::<syn::Result<Vec<_>>>()?;
 
@@ -747,6 +709,38 @@ fn expand_askit_agent(
     Ok(expanded)
 }
 
+fn parse_name_type_title_description(
+    meta: &Meta,
+    name: &mut Option<Expr>,
+    type_: &mut Option<Expr>,
+    title: &mut Option<Expr>,
+    description: &mut Option<Expr>,
+) -> bool {
+    match meta {
+        Meta::NameValue(nv) if nv.path.is_ident("name") => {
+            *name = Some(nv.value.clone());
+            true
+        }
+        Meta::NameValue(nv) if nv.path.is_ident("type") => {
+            *type_ = Some(nv.value.clone());
+            true
+        }
+        Meta::NameValue(nv) if nv.path.is_ident("type_") => {
+            *type_ = Some(nv.value.clone());
+            true
+        }
+        Meta::NameValue(nv) if nv.path.is_ident("title") => {
+            *title = Some(nv.value.clone());
+            true
+        }
+        Meta::NameValue(nv) if nv.path.is_ident("description") => {
+            *description = Some(nv.value.clone());
+            true
+        }
+        _ => false,
+    }
+}
+
 fn parse_custom_config(list: MetaList) -> syn::Result<CustomConfig> {
     let mut name = None;
     let mut default = None;
@@ -756,29 +750,24 @@ fn parse_custom_config(list: MetaList) -> syn::Result<CustomConfig> {
     let nested = list.parse_args_with(Punctuated::<Meta, Comma>::parse_terminated)?;
 
     for meta in nested {
+        if parse_name_type_title_description(
+            &meta,
+            &mut name,
+            &mut type_,
+            &mut title,
+            &mut description,
+        ) {
+            continue;
+        }
+
         match meta {
-            Meta::NameValue(nv) if nv.path.is_ident("name") => {
-                name = Some(nv.value.clone());
-            }
             Meta::NameValue(nv) if nv.path.is_ident("default") => {
                 default = Some(nv.value.clone());
-            }
-            Meta::NameValue(nv) if nv.path.is_ident("type") => {
-                type_ = Some(nv.value.clone());
-            }
-            Meta::NameValue(nv) if nv.path.is_ident("type_") => {
-                type_ = Some(nv.value.clone());
-            }
-            Meta::NameValue(nv) if nv.path.is_ident("title") => {
-                title = Some(nv.value.clone());
-            }
-            Meta::NameValue(nv) if nv.path.is_ident("description") => {
-                description = Some(nv.value.clone());
             }
             other => {
                 return Err(syn::Error::new_spanned(
                     other,
-                    "config supports name, default, type/type_, title, description",
+                    "custom_config supports name, default, type/type_, title, description",
                 ));
             }
         }
@@ -889,36 +878,32 @@ fn parse_custom_display(list: MetaList) -> syn::Result<CustomDisplay> {
     let nested = list.parse_args_with(Punctuated::<Meta, Comma>::parse_terminated)?;
 
     for meta in nested {
+        if parse_name_type_title_description(
+            &meta,
+            &mut name,
+            &mut type_,
+            &mut title,
+            &mut description,
+        ) {
+            continue;
+        }
+
         match meta {
-            Meta::NameValue(nv) if nv.path.is_ident("name") => {
-                name = Some(nv.value.clone());
-            }
-            Meta::NameValue(nv) if nv.path.is_ident("type") => {
-                type_ = Some(nv.value.clone());
-            }
-            Meta::NameValue(nv) if nv.path.is_ident("type_") => {
-                type_ = Some(nv.value.clone());
-            }
-            Meta::NameValue(nv) if nv.path.is_ident("title") => {
-                title = Some(nv.value.clone());
-            }
-            Meta::NameValue(nv) if nv.path.is_ident("description") => {
-                description = Some(nv.value.clone());
-            }
             Meta::Path(p) if p.is_ident("hide_title") => {
                 hide_title = true;
             }
             other => {
                 return Err(syn::Error::new_spanned(
                     other,
-                    "display supports name, type/type_, title, description, hide_title",
+                    "custom_display supports name, type/type_, title, description, hide_title",
                 ));
             }
         }
     }
 
-    let name = name.ok_or_else(|| syn::Error::new(list.span(), "display missing `name`"))?;
-    let type_ = type_.ok_or_else(|| syn::Error::new(list.span(), "display missing `type`"))?;
+    let name = name.ok_or_else(|| syn::Error::new(list.span(), "custom_display missing `name`"))?;
+    let type_ =
+        type_.ok_or_else(|| syn::Error::new(list.span(), "custom_display missing `type`"))?;
 
     Ok(CustomDisplay {
         name,
@@ -926,6 +911,28 @@ fn parse_custom_display(list: MetaList) -> syn::Result<CustomDisplay> {
         title,
         description,
         hide_title,
+    })
+}
+
+fn custom_config_call(method: &str, cfg: CustomConfig) -> syn::Result<proc_macro2::TokenStream> {
+    let CustomConfig {
+        name,
+        default,
+        type_,
+        title,
+        description,
+    } = cfg;
+    let title = title.map(|t| quote! { let entry = entry.title(#t); });
+    let description = description.map(|d| quote! { let entry = entry.description(#d); });
+    let method_ident = format_ident!("{}", method);
+
+    Ok(quote! {
+        .#method_ident(#name, #default, #type_, |entry| {
+            let entry = entry;
+            #title
+            #description
+            entry
+        })
     })
 }
 
