@@ -129,6 +129,14 @@ impl ASKit {
         def.default_configs.clone()
     }
 
+    // pub fn get_default_agent_spec(&self, def_name: &str) -> Option<AgentSpec> {
+    //     let defs = self.defs.lock().unwrap();
+    //     let Some(def) = defs.get(def_name) else {
+    //         return None;
+    //     };
+    //     Some(def.to_spec())
+    // }
+
     // flows
 
     pub fn get_agent_flows(&self) -> AgentFlows {
@@ -296,12 +304,7 @@ impl ASKit {
         if agents.contains_key(&node.id) {
             return Err(AgentError::AgentAlreadyExists(node.id.to_string()));
         }
-        let mut agent = agent_new(
-            self.clone(),
-            node.id.clone(),
-            &node.def_name,
-            node.configs.clone(),
-        )?;
+        let mut agent = agent_new(self.clone(), node.id.clone(), node.spec.clone())?;
         agent.set_flow_id(flow_id.to_string());
         agents.insert(node.id.clone(), Arc::new(AsyncMutex::new(agent)));
         Ok(())
