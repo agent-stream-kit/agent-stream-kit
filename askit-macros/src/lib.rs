@@ -7,8 +7,8 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
 use syn::{
-    Expr, ItemStruct, Meta, MetaList, Type, parse_macro_input, parse_quote,
-    punctuated::Punctuated, spanned::Spanned, token::Comma,
+    Expr, ItemStruct, Meta, MetaList, Type, parse_macro_input, parse_quote, punctuated::Punctuated,
+    spanned::Spanned, token::Comma,
 };
 
 #[proc_macro_attribute]
@@ -64,6 +64,14 @@ struct CommonConfig {
     description: Option<Expr>,
 }
 
+struct CustomConfig {
+    name: Expr,
+    default: Expr,
+    type_: Expr,
+    title: Option<Expr>,
+    description: Option<Expr>,
+}
+
 enum ConfigSpec {
     Unit(CommonConfig),
     Boolean(CommonConfig),
@@ -72,6 +80,7 @@ enum ConfigSpec {
     String(CommonConfig),
     Text(CommonConfig),
     Object(CommonConfig),
+    Custom(CustomConfig),
 }
 
 enum DisplaySpec {
@@ -186,6 +195,11 @@ fn expand_askit_agent(
                     .configs
                     .push(ConfigSpec::Object(parse_common_config(ml)?));
             }
+            Meta::List(ml) if ml.path.is_ident("custom_config") => {
+                parsed
+                    .configs
+                    .push(ConfigSpec::Custom(parse_custom_config(ml)?));
+            }
             Meta::List(ml) if ml.path.is_ident("unit_config") => {
                 parsed
                     .configs
@@ -220,6 +234,11 @@ fn expand_askit_agent(
                 parsed
                     .global_configs
                     .push(ConfigSpec::Object(parse_common_config(ml)?));
+            }
+            Meta::List(ml) if ml.path.is_ident("custom_global_config") => {
+                parsed
+                    .global_configs
+                    .push(ConfigSpec::Custom(parse_custom_config(ml)?));
             }
             Meta::List(ml) if ml.path.is_ident("unit_global_config") => {
                 parsed
@@ -450,6 +469,26 @@ fn expand_askit_agent(
                     })
                 })
             }
+            ConfigSpec::Custom(c) => {
+                let CustomConfig {
+                    name,
+                    default,
+                    type_,
+                    title,
+                    description,
+                } = c;
+                let title = title.map(|t| quote! { let entry = entry.title(#t); });
+                let description =
+                    description.map(|d| quote! { let entry = entry.description(#d); });
+                Ok(quote! {
+                    .custom_config_with(#name, #default, #type_, |entry| {
+                        let entry = entry;
+                        #title
+                        #description
+                        entry
+                    })
+                })
+            }
         })
         .collect::<syn::Result<Vec<_>>>()?;
 
@@ -584,6 +623,26 @@ fn expand_askit_agent(
                     })
                 })
             }
+            ConfigSpec::Custom(c) => {
+                let CustomConfig {
+                    name,
+                    default,
+                    type_,
+                    title,
+                    description,
+                } = c;
+                let title = title.map(|t| quote! { let entry = entry.title(#t); });
+                let description =
+                    description.map(|d| quote! { let entry = entry.description(#d); });
+                Ok(quote! {
+                    .custom_global_config_with(#name, #default, #type_, |entry| {
+                        let entry = entry;
+                        #title
+                        #description
+                        entry
+                    })
+                })
+            }
         })
         .collect::<syn::Result<Vec<_>>>()?;
 
@@ -645,6 +704,57 @@ fn expand_askit_agent(
     };
 
     Ok(expanded)
+}
+
+fn parse_custom_config(list: MetaList) -> syn::Result<CustomConfig> {
+    let mut name = None;
+    let mut default = None;
+    let mut type_ = None;
+    let mut title = None;
+    let mut description = None;
+    let nested = list.parse_args_with(Punctuated::<Meta, Comma>::parse_terminated)?;
+
+    for meta in nested {
+        match meta {
+            Meta::NameValue(nv) if nv.path.is_ident("name") => {
+                name = Some(nv.value.clone());
+            }
+            Meta::NameValue(nv) if nv.path.is_ident("default") => {
+                default = Some(nv.value.clone());
+            }
+            Meta::NameValue(nv) if nv.path.is_ident("type") => {
+                type_ = Some(nv.value.clone());
+            }
+            Meta::NameValue(nv) if nv.path.is_ident("type_") => {
+                type_ = Some(nv.value.clone());
+            }
+            Meta::NameValue(nv) if nv.path.is_ident("title") => {
+                title = Some(nv.value.clone());
+            }
+            Meta::NameValue(nv) if nv.path.is_ident("description") => {
+                description = Some(nv.value.clone());
+            }
+            other => {
+                return Err(syn::Error::new_spanned(
+                    other,
+                    "config supports name, default, type/type_, title, description",
+                ));
+            }
+        }
+    }
+
+    let name = name.ok_or_else(|| syn::Error::new(list.span(), "config missing `name`"))?;
+    let default =
+        default.ok_or_else(|| syn::Error::new(list.span(), "config missing `default`"))?;
+    let type_ = type_.ok_or_else(|| syn::Error::new(list.span(), "config missing `type`"))?;
+
+    Ok(CustomConfig {
+        name,
+        default,
+        type_,
+        title,
+        description,
+    })
 }
 
 fn collect_exprs(list: MetaList) -> syn::Result<Vec<Expr>> {
