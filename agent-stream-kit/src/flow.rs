@@ -142,10 +142,7 @@ impl AgentFlow {
             }
             Err(deserialize_err) => {
                 let legacy_json: Value = serde_json::from_str(json_str).map_err(|e| {
-                    AgentError::SerializationError(format!(
-                        "Failed to parse AgentFlow json: {}",
-                        e
-                    ))
+                    AgentError::SerializationError(format!("Failed to parse AgentFlow json: {}", e))
                 })?;
 
                 let converted_json = convert_legacy_flow(legacy_json, defs).map_err(|e| {
@@ -209,9 +206,7 @@ pub struct AgentFlowNode {
     pub enabled: bool,
 
     pub spec: AgentSpec,
-    // pub def_name: String,
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub configs: Option<AgentConfigs>,
+
     #[serde(flatten)]
     pub extensions: HashMap<String, Value>,
 }
@@ -237,7 +232,10 @@ fn new_id() -> String {
         .to_string();
 }
 
-fn convert_legacy_flow(mut legacy_json: Value, defs: &AgentDefinitions) -> Result<Value, AgentError> {
+fn convert_legacy_flow(
+    mut legacy_json: Value,
+    defs: &AgentDefinitions,
+) -> Result<Value, AgentError> {
     let Some(obj) = legacy_json.as_object_mut() else {
         return Err(AgentError::SerializationError(
             "AgentFlow json is not an object".to_string(),

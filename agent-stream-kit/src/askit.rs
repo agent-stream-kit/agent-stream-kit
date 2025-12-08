@@ -129,14 +129,6 @@ impl ASKit {
         def.default_configs.clone()
     }
 
-    // pub fn get_default_agent_spec(&self, def_name: &str) -> Option<AgentSpec> {
-    //     let defs = self.defs.lock().unwrap();
-    //     let Some(def) = defs.get(def_name) else {
-    //         return None;
-    //     };
-    //     Some(def.to_spec())
-    // }
-
     // flows
 
     pub fn get_agent_flows(&self) -> AgentFlows {
