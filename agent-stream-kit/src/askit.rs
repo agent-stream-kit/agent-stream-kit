@@ -242,9 +242,10 @@ impl ASKit {
 
         // add channels
         for channel in agent_stream.channels().iter() {
-            self.add_channel_internal(channel.clone()).unwrap_or_else(|e| {
-                log::error!("Failed to add_channel {}: {}", channel.source, e);
-            });
+            self.add_channel_internal(channel.clone())
+                .unwrap_or_else(|e| {
+                    log::error!("Failed to add_channel {}: {}", channel.source, e);
+                });
         }
 
         Ok(())
@@ -289,11 +290,7 @@ impl ASKit {
     }
 
     /// Add an agent to the specified stream.
-    pub fn add_agent(
-        &self,
-        stream_id: String,
-        spec: AgentSpec,
-    ) -> Result<(), AgentError> {
+    pub fn add_agent(&self, stream_id: String, spec: AgentSpec) -> Result<(), AgentError> {
         let mut streams = self.streams.lock().unwrap();
         let Some(stream) = streams.get_mut(&stream_id) else {
             return Err(AgentError::StreamNotFound(stream_id.to_string()));
@@ -321,11 +318,7 @@ impl ASKit {
         agents.get(agent_id).cloned()
     }
 
-    pub fn add_channel(
-        &self,
-        stream_id: &str,
-        channel: ChannelSpec,
-    ) -> Result<(), AgentError> {
+    pub fn add_channel(&self, stream_id: &str, channel: ChannelSpec) -> Result<(), AgentError> {
         let mut streams = self.streams.lock().unwrap();
         let Some(stream) = streams.get_mut(stream_id) else {
             return Err(AgentError::StreamNotFound(stream_id.to_string()));
@@ -364,29 +357,17 @@ impl ASKit {
             {
                 return Err(AgentError::ChannelAlreadyExists);
             }
-            targets.push((
-                channel.target,
-                channel.source_handle,
-                channel.target_handle,
-            ));
+            targets.push((channel.target, channel.source_handle, channel.target_handle));
         } else {
             channels.insert(
                 channel.source,
-                vec![(
-                    channel.target,
-                    channel.source_handle,
-                    channel.target_handle,
-                )],
+                vec![(channel.target, channel.source_handle, channel.target_handle)],
             );
         }
         Ok(())
     }
 
-    pub async fn remove_agent(
-        &self,
-        stream_id: &str,
-        agent_id: &str,
-    ) -> Result<(), AgentError> {
+    pub async fn remove_agent(&self, stream_id: &str, agent_id: &str) -> Result<(), AgentError> {
         {
             let mut streams = self.streams.lock().unwrap();
             let Some(stream) = streams.get_mut(stream_id) else {
@@ -426,11 +407,7 @@ impl ASKit {
         Ok(())
     }
 
-    pub fn remove_channel(
-        &self,
-        stream_id: &str,
-        channel_id: &str,
-    ) -> Result<(), AgentError> {
+    pub fn remove_channel(&self, stream_id: &str, channel_id: &str) -> Result<(), AgentError> {
         let mut streams = self.streams.lock().unwrap();
         let Some(stream) = streams.get_mut(stream_id) else {
             return Err(AgentError::StreamNotFound(stream_id.to_string()));
@@ -804,6 +781,16 @@ impl ASKit {
         self.try_send_board_out(name, AgentContext::new(), value)
     }
 
+    pub fn write_var_value(
+        &self,
+        flow_id: &str,
+        name: &str,
+        value: AgentValue,
+    ) -> Result<(), AgentError> {
+        let var_name = format!("%{}/{}", flow_id, name);
+        self.try_send_board_out(var_name, AgentContext::new(), value)
+    }
+
     pub(crate) fn try_send_board_out(
         &self,
         name: String,
@@ -896,10 +883,10 @@ impl ASKit {
     }
 
     pub(crate) fn emit_board(&self, name: String, value: AgentValue) {
-        // ignore variables
-        if name.starts_with('%') {
-            return;
-        }
+        // // ignore variables
+        // if name.starts_with('%') {
+        //     return;
+        // }
         self.notify_observers(ASKitEvent::Board(name, value));
     }
 

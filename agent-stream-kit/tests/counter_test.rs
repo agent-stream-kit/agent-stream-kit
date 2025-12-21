@@ -7,7 +7,7 @@ use askit::{
 
 mod common;
 
-const COUNTER_DEF: &str = common::CounterAgent::DEF_NAME;
+const COUNTER_DEF: &str = common::agents::CounterAgent::DEF_NAME;
 const PROBE_DEF: &str = TestProbeAgent::DEF_NAME;
 
 #[test]

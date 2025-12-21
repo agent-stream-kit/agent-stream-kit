@@ -4,7 +4,7 @@ mod common;
 
 use askit::{ASKit, AgentSpec, AgentStream};
 
-const COUNTER_DEF: &str = concat!(module_path!(), "::common::CounterAgent");
+const COUNTER_DEF: &str = concat!(module_path!(), "::common::agents::CounterAgent");
 
 // AgentStreamNode
 
