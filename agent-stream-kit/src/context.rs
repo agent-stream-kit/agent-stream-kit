@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::AgentError;
 use crate::value::AgentValue;
 
 /// Event-scoped context that identifies a single flow across agents and carries auxiliary metadata.
@@ -24,6 +25,10 @@ pub struct AgentContext {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     frames: Option<im::Vector<Frame>>,
 }
+
+pub const FRAME_MAP: &str = "map";
+pub const FRAME_KEY_INDEX: &str = "index";
+pub const FRAME_KEY_LENGTH: &str = "length";
 
 impl AgentContext {
     /// Creates a new context with a unique identifier and no state.
@@ -80,6 +85,42 @@ pub struct Frame {
     pub data: AgentValue,
 }
 
+fn map_frame_data(index: usize, len: usize) -> AgentValue {
+    let mut data = AgentValue::object_default();
+    let _ = data.set(
+        FRAME_KEY_INDEX.to_string(),
+        AgentValue::integer(index as i64),
+    );
+    let _ = data.set(
+        FRAME_KEY_LENGTH.to_string(),
+        AgentValue::integer(len as i64),
+    );
+    data
+}
+
+fn read_map_frame(frame: &Frame) -> Result<(usize, usize), AgentError> {
+    let idx = frame
+        .data
+        .get(FRAME_KEY_INDEX)
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| AgentError::InvalidValue("map frame missing integer index".into()))?;
+    let len = frame
+        .data
+        .get(FRAME_KEY_LENGTH)
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| AgentError::InvalidValue("map frame missing integer length".into()))?;
+    if idx < 0 || len < 1 {
+        return Err(AgentError::InvalidValue("Invalid map frame values".into()));
+    }
+    let (idx, len) = (idx as usize, len as usize);
+    if idx >= len {
+        return Err(AgentError::InvalidValue(
+            "map frame index is out of bounds".into(),
+        ));
+    }
+    Ok((idx, len))
+}
+
 impl AgentContext {
     /// Returns the current frame stack, if any frames have been pushed.
     pub fn frames(&self) -> Option<&im::Vector<Frame>> {
@@ -99,6 +140,83 @@ impl AgentContext {
             vars: self.vars.clone(),
             frames: Some(frames),
         }
+    }
+
+    /// Pushes a map frame with index/length metadata after validating bounds.
+    pub fn push_map_frame(&self, index: usize, len: usize) -> Result<Self, AgentError> {
+        if len == 0 {
+            return Err(AgentError::InvalidValue(
+                "map frame length must be positive".into(),
+            ));
+        }
+        if index >= len {
+            return Err(AgentError::InvalidValue(
+                "map frame index is out of bounds".into(),
+            ));
+        }
+        Ok(self.push_frame(FRAME_MAP.to_string(), map_frame_data(index, len)))
+    }
+
+    /// Returns the most recent map frame's (index, length) if present at the top of the stack.
+    pub fn current_map_frame(&self) -> Result<Option<(usize, usize)>, AgentError> {
+        let frames = match self.frames() {
+            Some(frames) => frames,
+            None => return Ok(None),
+        };
+        let Some(last_index) = frames.len().checked_sub(1) else {
+            return Ok(None);
+        };
+        let Some(frame) = frames.get(last_index) else {
+            return Ok(None);
+        };
+        if frame.name != FRAME_MAP {
+            return Ok(None);
+        }
+        read_map_frame(frame).map(Some)
+    }
+
+    /// Removes the most recent map frame, erroring if the top frame is missing or not a map frame.
+    pub fn pop_map_frame(&self) -> Result<AgentContext, AgentError> {
+        let (frame, next_ctx) = self.pop_frame();
+        match frame {
+            Some(f) if f.name == FRAME_MAP => Ok(next_ctx),
+            Some(f) => Err(AgentError::InvalidValue(format!(
+                "Unexpected frame '{}', expected map",
+                f.name
+            ))),
+            None => Err(AgentError::InvalidValue(
+                "Missing map frame in context".into(),
+            )),
+        }
+    }
+
+    /// Collects all map frame (index, length) tuples in order, validating each entry.
+    pub fn map_frame_indices(&self) -> Result<Vec<(usize, usize)>, AgentError> {
+        let mut indices = Vec::new();
+        let Some(frames) = self.frames() else {
+            return Ok(indices);
+        };
+        for frame in frames.iter() {
+            if frame.name != FRAME_MAP {
+                continue;
+            }
+            let (idx, len) = read_map_frame(frame)?;
+            indices.push((idx, len));
+        }
+        Ok(indices)
+    }
+
+    /// Returns a stable key combining the context id with all map frame indices, if present.
+    pub fn ctx_key(&self) -> Result<String, AgentError> {
+        let map_frames = self.map_frame_indices()?;
+        if map_frames.is_empty() {
+            return Ok(self.id().to_string());
+        }
+        let parts: Vec<String> = map_frames
+            .iter()
+            .map(|(idx, len)| format!("{}:{}", idx, len))
+            .collect();
+        Ok(format!("{}:{}", self.id(), parts.join(",")))
     }
 
     /// Removes the most recently pushed frame and returns it together with the updated context.
@@ -230,5 +348,43 @@ mod tests {
         assert_eq!(frames.len(), 1);
         assert_eq!(frames[0]["name"], json!("frame"));
         assert_eq!(frames[0]["data"], json!(1));
+    }
+
+    #[test]
+    fn map_frame_helpers_validate_and_track_indices() -> Result<(), AgentError> {
+        let ctx = AgentContext::new();
+        let ctx = ctx.push_map_frame(0, 2)?;
+        let ctx = ctx.push_map_frame(1, 3)?;
+
+        let indices = ctx.map_frame_indices()?;
+        assert_eq!(indices, vec![(0, 2), (1, 3)]);
+
+        let current = ctx.current_map_frame()?.expect("map frame should exist");
+        assert_eq!(current, (1, 3));
+
+        let key = ctx.ctx_key()?;
+        assert_eq!(key, format!("{}:0:2,1:3", ctx.id()));
+
+        let ctx = ctx.pop_map_frame()?;
+        let current_after_pop = ctx.current_map_frame()?.expect("map frame should remain");
+        assert_eq!(current_after_pop, (0, 2));
+
+        Ok(())
+    }
+
+    #[test]
+    fn pop_map_frame_errors_when_missing_or_wrong_kind() {
+        let ctx = AgentContext::new();
+        assert!(ctx.pop_map_frame().is_err());
+
+        let ctx = ctx.push_frame("other".into(), AgentValue::unit());
+        assert!(ctx.pop_map_frame().is_err());
+    }
+
+    #[test]
+    fn push_map_frame_rejects_invalid_bounds() {
+        let ctx = AgentContext::new();
+        assert!(ctx.push_map_frame(0, 0).is_err());
+        assert!(ctx.push_map_frame(2, 1).is_err());
     }
 }
