@@ -17,12 +17,10 @@ fn test_agent_spec_from_def() {
     let spec = AgentSpec::from_def(&def);
 
     assert_eq!(spec.def_name, COUNTER_DEF);
-    assert!(!spec.enabled);
 
     let spec2 = AgentSpec::from_def(&def);
     assert_eq!(spec2.def_name, COUNTER_DEF);
     assert!(spec.id != spec2.id);
-    assert!(!spec2.enabled);
 }
 
 // AgentStream

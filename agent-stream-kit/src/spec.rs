@@ -23,6 +23,12 @@ pub struct AgentStream {
 
     channels: Vec<ChannelSpec>,
 
+    #[serde(default, skip_serializing)]
+    running: bool,
+
+    #[serde(default, skip_serializing_if = "<&bool>::not")]
+    run_on_start: bool,
+
     #[serde(flatten)]
     pub extensions: FnvIndexMap<String, Value>,
 }
@@ -34,6 +40,8 @@ impl AgentStream {
             name,
             agents: Vec::new(),
             channels: Vec::new(),
+            running: false,
+            run_on_start: false,
             extensions: FnvIndexMap::default(),
         }
     }
@@ -92,35 +100,52 @@ impl AgentStream {
         self.channels = channels;
     }
 
-    pub async fn start(&self, askit: &ASKit) -> Result<(), AgentError> {
+    pub fn running(&self) -> bool {
+        self.running
+    }
+
+    pub fn run_on_start(&self) -> bool {
+        self.run_on_start
+    }
+
+    pub fn set_run_on_start(&mut self, run_on_start: bool) {
+        self.run_on_start = run_on_start;
+    }
+
+    pub async fn start(&mut self, askit: &ASKit) -> Result<(), AgentError> {
+        if self.running {
+            // Already running
+            return Ok(());
+        }
+        self.running = true;
+
         for agent in self.agents.iter() {
-            if !agent.enabled {
+            if agent.disabled {
                 continue;
             }
             askit.start_agent(&agent.id).await.unwrap_or_else(|e| {
                 log::error!("Failed to start agent {}: {}", agent.id, e);
             });
         }
+
         Ok(())
     }
 
-    pub async fn stop(&self, askit: &ASKit) -> Result<(), AgentError> {
+    pub async fn stop(&mut self, askit: &ASKit) -> Result<(), AgentError> {
         for agent in self.agents.iter() {
-            if !agent.enabled {
-                continue;
-            }
             askit.stop_agent(&agent.id).await.unwrap_or_else(|e| {
                 log::error!("Failed to stop agent {}: {}", agent.id, e);
             });
         }
+        self.running = false;
         Ok(())
     }
 
-    pub fn disable_all_nodes(&mut self) {
-        for node in self.agents.iter_mut() {
-            node.enabled = false;
-        }
-    }
+    // pub fn disable_all_nodes(&mut self) {
+    //     for node in self.agents.iter_mut() {
+    //         node.enabled = false;
+    //     }
+    // }
 
     pub fn to_json(&self) -> Result<String, AgentError> {
         let json = serde_json::to_string_pretty(self)
@@ -194,8 +219,12 @@ pub struct AgentSpec {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config_specs: Option<AgentConfigSpecs>,
 
+    #[deprecated(note = "Use `disabled` instead")]
     #[serde(default, skip_serializing_if = "<&bool>::not")]
     pub enabled: bool,
+
+    #[serde(default, skip_serializing_if = "<&bool>::not")]
+    pub disabled: bool,
 
     #[serde(flatten)]
     pub extensions: FnvIndexMap<String, serde_json::Value>,

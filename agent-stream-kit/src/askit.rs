@@ -140,9 +140,20 @@ impl ASKit {
 
     // streams
 
+    /// Get all agent streams.
     pub fn get_agent_streams(&self) -> AgentStreams {
         let streams = self.streams.lock().unwrap();
         streams.clone()
+    }
+
+    /// Get the ids of all running agent streams.
+    pub fn get_running_agent_streams(&self) -> Vec<String> {
+        let streams = self.streams.lock().unwrap();
+        streams
+            .values()
+            .filter(|stream| stream.running())
+            .map(|stream| stream.id().to_string())
+            .collect()
     }
 
     pub fn new_agent_stream(&self, name: &str) -> Result<AgentStream, AgentError> {
@@ -252,7 +263,7 @@ impl ASKit {
     }
 
     pub async fn remove_agent_stream(&self, id: &str) -> Result<(), AgentError> {
-        let stream = {
+        let mut stream = {
             let mut streams = self.streams.lock().unwrap();
             let Some(stream) = streams.swap_remove(id) else {
                 return Err(AgentError::StreamNotFound(id.to_string()));
@@ -280,6 +291,8 @@ impl ASKit {
         streams.insert(stream_id.to_string(), stream);
         Ok(())
     }
+
+    // Agents
 
     /// Create a new agent spec from the given agent definition name.
     pub fn new_agent_spec(&self, def_name: &str) -> Result<AgentSpec, AgentError> {
@@ -442,26 +455,34 @@ impl ASKit {
     }
 
     pub async fn start_agent_stream(&self, id: &str) -> Result<(), AgentError> {
-        let stream = {
+        let mut stream = {
             let streams = self.streams.lock().unwrap();
-            let Some(stream) = streams.get(id) else {
-                return Err(AgentError::StreamNotFound(id.to_string()));
-            };
-            stream.clone()
+            streams
+                .get(id)
+                .cloned()
+                .ok_or_else(|| AgentError::StreamNotFound(id.to_string()))?
         };
+
         stream.start(self).await?;
+
+        let mut streams = self.streams.lock().unwrap();
+        streams.insert(id.to_string(), stream);
         Ok(())
     }
 
     pub async fn stop_agent_stream(&self, id: &str) -> Result<(), AgentError> {
-        let stream = {
+        let mut stream = {
             let streams = self.streams.lock().unwrap();
-            let Some(stream) = streams.get(id) else {
-                return Err(AgentError::StreamNotFound(id.to_string()));
-            };
-            stream.clone()
+            streams
+                .get(id)
+                .cloned()
+                .ok_or_else(|| AgentError::StreamNotFound(id.to_string()))?
         };
+
         stream.stop(self).await?;
+
+        let mut streams = self.streams.lock().unwrap();
+        streams.insert(id.to_string(), stream);
         Ok(())
     }
 
@@ -842,9 +863,19 @@ impl ASKit {
             agent_stream_ids = agent_streams.keys().cloned().collect::<Vec<_>>();
         }
         for id in agent_stream_ids {
-            self.start_agent_stream(&id).await.unwrap_or_else(|e| {
-                log::error!("Failed to start agent stream: {}", e);
-            });
+            let is_run_on_start = {
+                let agent_streams = self.streams.lock().unwrap();
+                agent_streams
+                    .get(&id)
+                    .cloned()
+                    .map(|s| s.run_on_start())
+                    .unwrap_or(false)
+            };
+            if is_run_on_start {
+                self.start_agent_stream(&id).await.unwrap_or_else(|e| {
+                    log::error!("Failed to start agent stream: {}", e);
+                });
+            }
         }
         Ok(())
     }

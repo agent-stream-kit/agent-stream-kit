@@ -78,12 +78,10 @@ async fn test_agent_process() {
 
     // build a flow: Counter -> TestProbe
     let counter_def = askit.get_agent_definition(COUNTER_DEF).unwrap();
-    let mut counter_spec = AgentSpec::from_def(&counter_def);
-    counter_spec.enabled = true;
+    let counter_spec = AgentSpec::from_def(&counter_def);
 
     let probe_def = askit.get_agent_definition(PROBE_DEF).unwrap();
-    let mut probe_spec = AgentSpec::from_def(&probe_def);
-    probe_spec.enabled = true;
+    let probe_spec = AgentSpec::from_def(&probe_def);
 
     let counter_id = counter_spec.id.clone();
     let probe_id = probe_spec.id.clone();
@@ -98,6 +96,7 @@ async fn test_agent_process() {
         target: probe_id.clone(),
         target_handle: "in".into(),
     });
+    stream.set_run_on_start(true);
 
     askit.add_agent_stream(&stream).unwrap();
     askit.ready().await.unwrap();

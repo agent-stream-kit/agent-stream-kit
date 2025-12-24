@@ -27,7 +27,8 @@ pub async fn setup_askit() -> ASKit {
 pub async fn load_and_start_stream(askit: &ASKit, path: &str) -> Result<AgentStream, AgentError> {
     let stream_json = std::fs::read_to_string(path)
         .map_err(|e| AgentError::IoError(format!("Failed to read stream file: {}", e)))?;
-    let stream = crate::AgentStream::from_json(&stream_json)?;
+    let mut stream = crate::AgentStream::from_json(&stream_json)?;
+    stream.set_run_on_start(true);
     askit.add_agent_stream(&stream)?;
     askit.start_agent_stream(stream.id()).await?;
     Ok(stream)
