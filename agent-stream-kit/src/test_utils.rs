@@ -8,8 +8,8 @@ use tokio::{
 };
 
 use crate::{
-    ASKit, ASKitEvent, ASKitObserver, AgentContext, AgentData, AgentError, AgentSpec, AgentStream,
-    AgentValue, AsAgent, askit_agent,
+    ASKit, ASKitEvent, ASKitObserver, AgentContext, AgentData, AgentError, AgentSpec,
+    AgentStreamSpec, AgentValue, AsAgent, askit_agent,
 };
 
 /// Setting up ASKit
@@ -24,14 +24,14 @@ pub async fn setup_askit() -> ASKit {
 }
 
 /// Load and start an agent stream from a file.
-pub async fn load_and_start_stream(askit: &ASKit, path: &str) -> Result<AgentStream, AgentError> {
+pub async fn load_and_start_stream(askit: &ASKit, path: &str) -> Result<String, AgentError> {
     let stream_json = std::fs::read_to_string(path)
         .map_err(|e| AgentError::IoError(format!("Failed to read stream file: {}", e)))?;
-    let mut stream = crate::AgentStream::from_json(&stream_json)?;
-    stream.set_run_on_start(true);
-    askit.add_agent_stream(&stream)?;
-    askit.start_agent_stream(stream.id()).await?;
-    Ok(stream)
+    let mut spec = AgentStreamSpec::from_json(&stream_json)?;
+    spec.run_on_start = true;
+    let id = askit.add_agent_stream(spec)?;
+    askit.start_agent_stream(&id).await?;
+    Ok(id)
 }
 
 // BoardObserver

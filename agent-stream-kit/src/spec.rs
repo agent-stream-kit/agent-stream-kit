@@ -11,75 +11,49 @@ use crate::definition::{AgentConfigSpecs, AgentDefinition};
 use crate::error::AgentError;
 
 pub type AgentStreams = FnvIndexMap<String, AgentStream>;
+pub type AgentStreamSpecs = FnvIndexMap<String, AgentStreamSpec>;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct AgentStream {
-    #[serde(skip_serializing_if = "String::is_empty")]
-    id: String,
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct AgentStreamSpec {
+    pub name: String,
 
-    name: String,
+    pub agents: im::Vector<AgentSpec>,
 
-    agents: Vec<AgentSpec>,
-
-    channels: Vec<ChannelSpec>,
-
-    #[serde(default, skip_serializing)]
-    running: bool,
+    pub channels: im::Vector<ChannelSpec>,
 
     #[serde(default, skip_serializing_if = "<&bool>::not")]
-    run_on_start: bool,
+    pub run_on_start: bool,
 
     #[serde(flatten)]
-    pub extensions: FnvIndexMap<String, Value>,
+    pub extensions: im::HashMap<String, Value>,
 }
 
-impl AgentStream {
+impl AgentStreamSpec {
     pub fn new(name: String) -> Self {
         Self {
-            id: new_id(),
             name,
-            agents: Vec::new(),
-            channels: Vec::new(),
-            running: false,
-            run_on_start: false,
-            extensions: FnvIndexMap::default(),
+            ..Default::default()
         }
     }
 
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn set_name(&mut self, new_name: String) {
-        self.name = new_name;
-    }
-
-    pub fn agents(&self) -> &Vec<AgentSpec> {
-        &self.agents
-    }
-
     pub fn add_agent(&mut self, agent: AgentSpec) {
-        self.agents.push(agent);
+        self.agents.push_back(agent);
     }
 
     pub fn remove_agent(&mut self, agent_id: &str) {
         self.agents.retain(|agent| agent.id != agent_id);
     }
 
-    pub fn set_agents(&mut self, agents: Vec<AgentSpec>) {
-        self.agents = agents;
-    }
+    // pub fn set_agents(&mut self, agents: im::Vector<AgentSpec>) {
+    //     self.agents = agents;
+    // }
 
-    pub fn channels(&self) -> &Vec<ChannelSpec> {
-        &self.channels
-    }
+    // pub fn channels(&self) -> &Vec<ChannelSpec> {
+    //     &self.channels
+    // }
 
     pub fn add_channels(&mut self, channel: ChannelSpec) {
-        self.channels.push(channel);
+        self.channels.push_back(channel);
     }
 
     pub fn remove_channel(&mut self, channel_id: &str) -> Option<ChannelSpec> {
@@ -96,50 +70,17 @@ impl AgentStream {
         }
     }
 
-    pub fn set_channels(&mut self, channels: Vec<ChannelSpec>) {
-        self.channels = channels;
-    }
+    // pub fn set_channels(&mut self, channels: Vec<ChannelSpec>) {
+    //     self.channels = channels;
+    // }
 
-    pub fn running(&self) -> bool {
-        self.running
-    }
+    // pub fn run_on_start(&self) -> bool {
+    //     self.run_on_start
+    // }
 
-    pub fn run_on_start(&self) -> bool {
-        self.run_on_start
-    }
-
-    pub fn set_run_on_start(&mut self, run_on_start: bool) {
-        self.run_on_start = run_on_start;
-    }
-
-    pub async fn start(&mut self, askit: &ASKit) -> Result<(), AgentError> {
-        if self.running {
-            // Already running
-            return Ok(());
-        }
-        self.running = true;
-
-        for agent in self.agents.iter() {
-            if agent.disabled {
-                continue;
-            }
-            askit.start_agent(&agent.id).await.unwrap_or_else(|e| {
-                log::error!("Failed to start agent {}: {}", agent.id, e);
-            });
-        }
-
-        Ok(())
-    }
-
-    pub async fn stop(&mut self, askit: &ASKit) -> Result<(), AgentError> {
-        for agent in self.agents.iter() {
-            askit.stop_agent(&agent.id).await.unwrap_or_else(|e| {
-                log::error!("Failed to stop agent {}: {}", agent.id, e);
-            });
-        }
-        self.running = false;
-        Ok(())
-    }
+    // pub fn set_run_on_start(&mut self, run_on_start: bool) {
+    //     self.run_on_start = run_on_start;
+    // }
 
     // pub fn disable_all_nodes(&mut self) {
     //     for node in self.agents.iter_mut() {
@@ -154,10 +95,73 @@ impl AgentStream {
     }
 
     pub fn from_json(json_str: &str) -> Result<Self, AgentError> {
-        let mut stream: AgentStream = serde_json::from_str(json_str)
+        let stream: AgentStreamSpec = serde_json::from_str(json_str)
             .map_err(|e| AgentError::SerializationError(e.to_string()))?;
-        stream.id = new_id();
         Ok(stream)
+    }
+}
+
+#[derive(Debug)]
+pub struct AgentStream {
+    id: String,
+
+    running: bool,
+
+    spec: AgentStreamSpec,
+}
+
+impl AgentStream {
+    pub fn new(spec: AgentStreamSpec) -> Self {
+        Self {
+            id: new_id(),
+            running: false,
+            spec,
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn spec(&self) -> &AgentStreamSpec {
+        &self.spec
+    }
+
+    pub fn spec_mut(&mut self) -> &mut AgentStreamSpec {
+        &mut self.spec
+    }
+
+    pub fn running(&self) -> bool {
+        self.running
+    }
+
+    pub async fn start(&mut self, askit: &ASKit) -> Result<(), AgentError> {
+        if self.running {
+            // Already running
+            return Ok(());
+        }
+        self.running = true;
+
+        for agent in self.spec.agents.iter() {
+            if agent.disabled {
+                continue;
+            }
+            askit.start_agent(&agent.id).await.unwrap_or_else(|e| {
+                log::error!("Failed to start agent {}: {}", agent.id, e);
+            });
+        }
+
+        Ok(())
+    }
+
+    pub async fn stop(&mut self, askit: &ASKit) -> Result<(), AgentError> {
+        for agent in self.spec.agents.iter() {
+            askit.stop_agent(&agent.id).await.unwrap_or_else(|e| {
+                log::error!("Failed to stop agent {}: {}", agent.id, e);
+            });
+        }
+        self.running = false;
+        Ok(())
     }
 }
 

@@ -1,6 +1,7 @@
 use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex};
 
+use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
 
 use crate::FnvIndexMap;
@@ -11,7 +12,7 @@ use crate::definition::{AgentConfigSpecs, AgentDefinition, AgentDefinitions};
 use crate::error::AgentError;
 use crate::message::{self, AgentEventMessage};
 use crate::registry;
-use crate::spec::{self, AgentSpec, AgentStream, AgentStreams, ChannelSpec};
+use crate::spec::{self, AgentSpec, AgentStream, AgentStreamSpec, AgentStreams, ChannelSpec};
 use crate::value::AgentValue;
 
 const MESSAGE_LIMIT: usize = 1024;
@@ -85,7 +86,7 @@ impl ASKit {
 
     pub async fn ready(&self) -> Result<(), AgentError> {
         self.spawn_message_loop().await?;
-        self.start_agent_streams().await?;
+        self.start_agent_streams_on_start().await?;
         Ok(())
     }
 
@@ -140,10 +141,32 @@ impl ASKit {
 
     // streams
 
-    /// Get all agent streams.
-    pub fn get_agent_streams(&self) -> AgentStreams {
+    /// Get info of all agent stream infos.
+    pub fn get_agent_stream_infos(&self) -> Vec<AgentStreamInfo> {
         let streams = self.streams.lock().unwrap();
-        streams.clone()
+        streams
+            .values()
+            .map(|stream| AgentStreamInfo {
+                id: stream.id().to_string(),
+                name: stream.spec().name.clone(),
+                running: stream.running(),
+            })
+            .collect()
+    }
+
+    /// Get the agent stream by id.
+    pub fn get_agent_stream(&self, id: &str) -> Option<AgentStreamSpec> {
+        let streams = self.streams.lock().unwrap();
+        streams.get(id).map(|stream| stream.spec().clone())
+    }
+
+    /// Get all agent streams.
+    pub fn get_agent_streams(&self) -> Vec<AgentStreamSpec> {
+        let streams = self.streams.lock().unwrap();
+        streams
+            .values()
+            .map(|stream| stream.spec().clone())
+            .collect()
     }
 
     /// Get the ids of all running agent streams.
@@ -156,20 +179,21 @@ impl ASKit {
             .collect()
     }
 
-    pub fn new_agent_stream(&self, name: &str) -> Result<AgentStream, AgentError> {
-        if !Self::is_valid_stream_name(name) {
+    pub fn new_agent_stream(&self, name: &str) -> Result<String, AgentError> {
+        if !is_valid_stream_name(name) {
             return Err(AgentError::InvalidStreamName(name.into()));
         }
-
         let new_name = self.unique_stream_name(name);
-        let mut streams = self.streams.lock().unwrap();
-        let stream = AgentStream::new(new_name.clone());
-        streams.insert(stream.id().to_string(), stream.clone());
-        Ok(stream)
+        // let mut streams = self.streams.lock().unwrap();
+        let spec = AgentStreamSpec::new(new_name);
+        let id = self.add_agent_stream(spec)?;
+        // streams.insert(stream.id().to_string(), stream.clone());
+        // Ok(stream)
+        Ok(id)
     }
 
     pub fn rename_agent_stream(&self, id: &str, new_name: &str) -> Result<String, AgentError> {
-        if !Self::is_valid_stream_name(new_name) {
+        if !is_valid_stream_name(new_name) {
             return Err(AgentError::InvalidStreamName(new_name.into()));
         }
 
@@ -184,82 +208,52 @@ impl ASKit {
         };
 
         // insert renamed stream
-        stream.set_name(new_name.clone());
+        stream.spec_mut().name = new_name.clone();
         streams.insert(stream.id().to_string(), stream);
         Ok(new_name)
-    }
-
-    fn is_valid_stream_name(new_name: &str) -> bool {
-        // Check if the name is empty
-        if new_name.trim().is_empty() {
-            return false;
-        }
-
-        // Checks for path-like names:
-        if new_name.contains('/') {
-            // Disallow leading, trailing, or consecutive slashes
-            if new_name.starts_with('/') || new_name.ends_with('/') || new_name.contains("//") {
-                return false;
-            }
-            // Disallow segments that are "." or ".."
-            if new_name
-                .split('/')
-                .any(|segment| segment == "." || segment == "..")
-            {
-                return false;
-            }
-        }
-
-        // Check if the name contains invalid characters
-        let invalid_chars = ['\\', ':', '*', '?', '"', '<', '>', '|'];
-        for c in invalid_chars {
-            if new_name.contains(c) {
-                return false;
-            }
-        }
-
-        true
     }
 
     pub fn unique_stream_name(&self, name: &str) -> String {
         let mut new_name = name.trim().to_string();
         let mut i = 2;
         let streams = self.streams.lock().unwrap();
-        while streams.values().any(|stream| stream.name() == new_name) {
+        while streams
+            .values()
+            .any(|stream| stream.spec().name == new_name)
+        {
             new_name = format!("{}{}", name, i);
             i += 1;
         }
         new_name
     }
 
-    pub fn add_agent_stream(&self, agent_stream: &AgentStream) -> Result<(), AgentError> {
-        let id = agent_stream.id();
-
-        // add the given stream into streams
-        {
-            let mut streams = self.streams.lock().unwrap();
-            if streams.contains_key(id) {
-                return Err(AgentError::DuplicateId(id.into()));
-            }
-            streams.insert(id.to_string(), agent_stream.clone());
-        }
+    pub fn add_agent_stream(&self, spec: AgentStreamSpec) -> Result<String, AgentError> {
+        let stream = AgentStream::new(spec);
+        let id = stream.id().to_string();
 
         // add agents
-        for agent in agent_stream.agents().iter() {
-            if let Err(e) = self.add_agent_internal(id.to_string(), agent.clone()) {
+        for agent in &stream.spec().agents {
+            if let Err(e) = self.add_agent_internal(id.clone(), agent.clone()) {
                 log::error!("Failed to add_agent {}: {}", agent.id, e);
             }
         }
 
         // add channels
-        for channel in agent_stream.channels().iter() {
+        for channel in &stream.spec().channels {
             self.add_channel_internal(channel.clone())
                 .unwrap_or_else(|e| {
                     log::error!("Failed to add_channel {}: {}", channel.source, e);
                 });
         }
 
-        Ok(())
+        // add the given stream into streams
+        let mut streams = self.streams.lock().unwrap();
+        if streams.contains_key(&id) {
+            return Err(AgentError::DuplicateId(id.into()));
+        }
+        streams.insert(id.to_string(), stream);
+
+        Ok(id)
     }
 
     pub async fn remove_agent_stream(&self, id: &str) -> Result<(), AgentError> {
@@ -268,29 +262,29 @@ impl ASKit {
             let Some(stream) = streams.swap_remove(id) else {
                 return Err(AgentError::StreamNotFound(id.to_string()));
             };
-            stream.clone()
+            stream
         };
 
         stream.stop(self).await?;
 
         // Remove all agents and channels associated with the stream
-        for agent in stream.agents() {
+        for agent in &stream.spec().agents {
             self.remove_agent_internal(&agent.id).await?;
         }
-        for channel in stream.channels() {
+        for channel in &stream.spec().channels {
             self.remove_channel_internal(channel);
         }
 
         Ok(())
     }
 
-    pub fn insert_agent_stream(&self, stream: AgentStream) -> Result<(), AgentError> {
-        let stream_id = stream.id();
+    // pub fn insert_agent_stream(&self, stream: AgentStream) -> Result<(), AgentError> {
+    //     let stream_id = stream.id();
 
-        let mut streams = self.streams.lock().unwrap();
-        streams.insert(stream_id.to_string(), stream);
-        Ok(())
-    }
+    //     let mut streams = self.streams.lock().unwrap();
+    //     streams.insert(stream_id.to_string(), stream);
+    //     Ok(())
+    // }
 
     // Agents
 
@@ -309,7 +303,7 @@ impl ASKit {
             return Err(AgentError::StreamNotFound(stream_id.to_string()));
         };
         self.add_agent_internal(stream_id, spec.clone())?;
-        stream.add_agent(spec.clone());
+        stream.spec_mut().add_agent(spec.clone());
         Ok(())
     }
 
@@ -336,7 +330,7 @@ impl ASKit {
         let Some(stream) = streams.get_mut(stream_id) else {
             return Err(AgentError::StreamNotFound(stream_id.to_string()));
         };
-        stream.add_channels(channel.clone());
+        stream.spec_mut().add_channels(channel.clone());
         self.add_channel_internal(channel)?;
         Ok(())
     }
@@ -386,7 +380,7 @@ impl ASKit {
             let Some(stream) = streams.get_mut(stream_id) else {
                 return Err(AgentError::StreamNotFound(stream_id.to_string()));
             };
-            stream.remove_agent(agent_id);
+            stream.spec_mut().remove_agent(agent_id);
         }
         self.remove_agent_internal(agent_id).await?;
         Ok(())
@@ -421,11 +415,15 @@ impl ASKit {
     }
 
     pub fn remove_channel(&self, stream_id: &str, channel_id: &str) -> Result<(), AgentError> {
-        let mut streams = self.streams.lock().unwrap();
-        let Some(stream) = streams.get_mut(stream_id) else {
-            return Err(AgentError::StreamNotFound(stream_id.to_string()));
+        let mut stream = {
+            let mut streams = self.streams.lock().unwrap();
+            let Some(stream) = streams.swap_remove(stream_id) else {
+                return Err(AgentError::StreamNotFound(stream_id.to_string()));
+            };
+            stream
         };
-        let Some(channel) = stream.remove_channel(channel_id) else {
+
+        let Some(channel) = stream.spec_mut().remove_channel(channel_id) else {
             return Err(AgentError::ChannelNotFound(channel_id.to_string()));
         };
         self.remove_channel_internal(&channel);
@@ -456,11 +454,11 @@ impl ASKit {
 
     pub async fn start_agent_stream(&self, id: &str) -> Result<(), AgentError> {
         let mut stream = {
-            let streams = self.streams.lock().unwrap();
-            streams
-                .get(id)
-                .cloned()
-                .ok_or_else(|| AgentError::StreamNotFound(id.to_string()))?
+            let mut streams = self.streams.lock().unwrap();
+            let Some(stream) = streams.swap_remove(id) else {
+                return Err(AgentError::StreamNotFound(id.to_string()));
+            };
+            stream
         };
 
         stream.start(self).await?;
@@ -472,11 +470,11 @@ impl ASKit {
 
     pub async fn stop_agent_stream(&self, id: &str) -> Result<(), AgentError> {
         let mut stream = {
-            let streams = self.streams.lock().unwrap();
-            streams
-                .get(id)
-                .cloned()
-                .ok_or_else(|| AgentError::StreamNotFound(id.to_string()))?
+            let mut streams = self.streams.lock().unwrap();
+            let Some(stream) = streams.swap_remove(id) else {
+                return Err(AgentError::StreamNotFound(id.to_string()));
+            };
+            stream
         };
 
         stream.stop(self).await?;
@@ -804,11 +802,11 @@ impl ASKit {
 
     pub fn write_var_value(
         &self,
-        flow_id: &str,
+        stream_id: &str,
         name: &str,
         value: AgentValue,
     ) -> Result<(), AgentError> {
-        let var_name = format!("%{}/{}", flow_id, name);
+        let var_name = format!("%{}/{}", stream_id, name);
         self.try_send_board_out(var_name, AgentContext::new(), value)
     }
 
@@ -856,26 +854,21 @@ impl ASKit {
         Ok(())
     }
 
-    async fn start_agent_streams(&self) -> Result<(), AgentError> {
-        let agent_stream_ids;
+    async fn start_agent_streams_on_start(&self) -> Result<(), AgentError> {
+        let run_on_start_stream_ids;
         {
             let agent_streams = self.streams.lock().unwrap();
-            agent_stream_ids = agent_streams.keys().cloned().collect::<Vec<_>>();
+            run_on_start_stream_ids = agent_streams
+                .values()
+                .filter(|s| s.spec().run_on_start)
+                .map(|s| s.id().to_string())
+                .collect::<Vec<_>>();
         }
-        for id in agent_stream_ids {
-            let is_run_on_start = {
-                let agent_streams = self.streams.lock().unwrap();
-                agent_streams
-                    .get(&id)
-                    .cloned()
-                    .map(|s| s.run_on_start())
-                    .unwrap_or(false)
-            };
-            if is_run_on_start {
-                self.start_agent_stream(&id).await.unwrap_or_else(|e| {
-                    log::error!("Failed to start agent stream: {}", e);
-                });
-            }
+
+        for id in run_on_start_stream_ids {
+            self.start_agent_stream(&id).await.unwrap_or_else(|e| {
+                log::error!("Failed to start agent stream: {}", e);
+            });
         }
         Ok(())
     }
@@ -927,6 +920,45 @@ impl ASKit {
             observer.notify(&event);
         }
     }
+}
+
+fn is_valid_stream_name(new_name: &str) -> bool {
+    // Check if the name is empty
+    if new_name.trim().is_empty() {
+        return false;
+    }
+
+    // Checks for path-like names:
+    if new_name.contains('/') {
+        // Disallow leading, trailing, or consecutive slashes
+        if new_name.starts_with('/') || new_name.ends_with('/') || new_name.contains("//") {
+            return false;
+        }
+        // Disallow segments that are "." or ".."
+        if new_name
+            .split('/')
+            .any(|segment| segment == "." || segment == "..")
+        {
+            return false;
+        }
+    }
+
+    // Check if the name contains invalid characters
+    let invalid_chars = ['\\', ':', '*', '?', '"', '<', '>', '|'];
+    for c in invalid_chars {
+        if new_name.contains(c) {
+            return false;
+        }
+    }
+
+    true
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AgentStreamInfo {
+    pub id: String,
+    pub name: String,
+    pub running: bool,
 }
 
 #[derive(Clone, Debug)]

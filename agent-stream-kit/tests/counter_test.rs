@@ -1,7 +1,7 @@
 extern crate agent_stream_kit as askit;
 
 use askit::{
-    ASKit, AgentContext, AgentSpec, AgentStatus, AgentStream, AgentValue, ChannelSpec,
+    ASKit, AgentContext, AgentSpec, AgentStatus, AgentStreamSpec, AgentValue, ChannelSpec,
     test_utils::{TestProbeAgent, probe_receiver},
 };
 
@@ -86,19 +86,19 @@ async fn test_agent_process() {
     let counter_id = counter_spec.id.clone();
     let probe_id = probe_spec.id.clone();
 
-    let mut stream = AgentStream::new("counter_probe_stream".into());
-    stream.add_agent(counter_spec);
-    stream.add_agent(probe_spec);
-    stream.add_channels(ChannelSpec {
+    let mut spec = AgentStreamSpec::new("counter_probe_stream".into());
+    spec.add_agent(counter_spec);
+    spec.add_agent(probe_spec);
+    spec.add_channels(ChannelSpec {
         id: "ch_counter_probe".into(),
         source: counter_id.clone(),
         source_handle: "count".into(),
         target: probe_id.clone(),
         target_handle: "in".into(),
     });
-    stream.set_run_on_start(true);
+    spec.run_on_start = true;
 
-    askit.add_agent_stream(&stream).unwrap();
+    askit.add_agent_stream(spec).unwrap();
     askit.ready().await.unwrap();
 
     askit
