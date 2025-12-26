@@ -153,10 +153,20 @@ impl ASKit {
         streams.get(id).map(|stream| stream.into())
     }
 
-    /// Get the agent stream by id.
-    pub fn get_agent_stream(&self, id: &str) -> Option<AgentStreamSpec> {
+    /// Get the agent stream spec by id.
+    pub fn get_agent_stream_spec(&self, id: &str) -> Option<AgentStreamSpec> {
         let streams = self.streams.lock().unwrap();
         streams.get(id).map(|stream| stream.spec().clone())
+    }
+
+    /// Set the agent stream spec by id.
+    pub fn set_agent_stream_spec(&self, id: &str, spec: AgentStreamSpec) -> Result<(), AgentError> {
+        let mut streams = self.streams.lock().unwrap();
+        let Some(stream) = streams.get_mut(id) else {
+            return Err(AgentError::StreamNotFound(id.to_string()));
+        };
+        *stream.spec_mut() = spec;
+        Ok(())
     }
 
     /// Get all agent stream specs.
