@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -29,7 +30,12 @@ pub async fn load_and_start_stream(askit: &ASKit, path: &str) -> Result<String, 
         .map_err(|e| AgentError::IoError(format!("Failed to read stream file: {}", e)))?;
     let mut spec = AgentStreamSpec::from_json(&stream_json)?;
     spec.run_on_start = true;
-    let id = askit.add_agent_stream(spec)?;
+    let name = Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("stream")
+        .to_string();
+    let id = askit.add_agent_stream(name, spec)?;
     askit.start_agent_stream(&id).await?;
     Ok(id)
 }

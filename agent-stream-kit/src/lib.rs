@@ -11,11 +11,13 @@ mod config;
 mod context;
 mod definition;
 mod error;
+mod id;
 mod message;
 mod output;
 mod registry;
 mod runtime;
 mod spec;
+mod stream;
 pub mod test_utils;
 mod value;
 
@@ -40,14 +42,13 @@ pub type FnvIndexSet<T> = indexmap::IndexSet<T, fnv::FnvBuildHasher>;
 pub use askit_macros::askit_agent;
 
 pub use agent::{Agent, AgentData, AgentStatus, AsAgent, HasAgentData, agent_new, new_agent_boxed};
-pub use askit::{ASKit, ASKitEvent, ASKitObserver, AgentStreamInfo};
+pub use askit::{ASKit, ASKitEvent, ASKitObserver};
 pub use config::{AgentConfigs, AgentConfigsMap};
 pub use context::AgentContext;
 pub use definition::{AgentConfigSpec, AgentConfigSpecs, AgentDefinition, AgentDefinitions};
 pub use error::AgentError;
 pub use output::AgentOutput;
 pub use registry::AgentRegistration;
-pub use spec::{
-    AgentSpec, AgentStream, AgentStreamSpec, AgentStreamSpecs, AgentStreams, ChannelSpec,
-};
+pub use spec::{AgentSpec, AgentStreamSpec, AgentStreamSpecs, ChannelSpec};
+pub use stream::{AgentStream, AgentStreamInfo, AgentStreams};
 pub use value::{AgentValue, AgentValueMap};

@@ -1,20 +1,20 @@
 use std::ops::Not;
-use std::sync::atomic::AtomicUsize;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::FnvIndexMap;
-use crate::askit::ASKit;
 use crate::config::AgentConfigs;
 use crate::definition::{AgentConfigSpecs, AgentDefinition};
 use crate::error::AgentError;
+use crate::id::new_id;
 
-pub type AgentStreams = FnvIndexMap<String, AgentStream>;
 pub type AgentStreamSpecs = FnvIndexMap<String, AgentStreamSpec>;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct AgentStreamSpec {
+    #[deprecated(note = "Use AgentStream::name instead")]
+    #[serde(skip_serializing_if = "String::is_empty", default)]
     pub name: String,
 
     pub agents: im::Vector<AgentSpec>,
@@ -29,6 +29,7 @@ pub struct AgentStreamSpec {
 }
 
 impl AgentStreamSpec {
+    #[deprecated(note = "Use default()")]
     pub fn new(name: String) -> Self {
         Self {
             name,
@@ -98,70 +99,6 @@ impl AgentStreamSpec {
         let stream: AgentStreamSpec = serde_json::from_str(json_str)
             .map_err(|e| AgentError::SerializationError(e.to_string()))?;
         Ok(stream)
-    }
-}
-
-#[derive(Debug)]
-pub struct AgentStream {
-    id: String,
-
-    running: bool,
-
-    spec: AgentStreamSpec,
-}
-
-impl AgentStream {
-    pub fn new(spec: AgentStreamSpec) -> Self {
-        Self {
-            id: new_id(),
-            running: false,
-            spec,
-        }
-    }
-
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-
-    pub fn spec(&self) -> &AgentStreamSpec {
-        &self.spec
-    }
-
-    pub fn spec_mut(&mut self) -> &mut AgentStreamSpec {
-        &mut self.spec
-    }
-
-    pub fn running(&self) -> bool {
-        self.running
-    }
-
-    pub async fn start(&mut self, askit: &ASKit) -> Result<(), AgentError> {
-        if self.running {
-            // Already running
-            return Ok(());
-        }
-        self.running = true;
-
-        for agent in self.spec.agents.iter() {
-            if agent.disabled {
-                continue;
-            }
-            askit.start_agent(&agent.id).await.unwrap_or_else(|e| {
-                log::error!("Failed to start agent {}: {}", agent.id, e);
-            });
-        }
-
-        Ok(())
-    }
-
-    pub async fn stop(&mut self, askit: &ASKit) -> Result<(), AgentError> {
-        for agent in self.spec.agents.iter() {
-            askit.stop_agent(&agent.id).await.unwrap_or_else(|e| {
-                log::error!("Failed to stop agent {}: {}", agent.id, e);
-            });
-        }
-        self.running = false;
-        Ok(())
     }
 }
 
@@ -240,14 +177,6 @@ impl AgentSpec {
         spec.id = new_id();
         spec
     }
-}
-
-static ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
-
-fn new_id() -> String {
-    return ID_COUNTER
-        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        .to_string();
 }
 
 // ChannelSpec
