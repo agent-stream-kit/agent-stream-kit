@@ -98,7 +98,9 @@ async fn test_agent_process() {
     });
     spec.run_on_start = true;
 
-    askit.add_agent_stream(spec).unwrap();
+    askit
+        .add_agent_stream("counter_probe_stream".to_string(), spec)
+        .unwrap();
     askit.ready().await.unwrap();
 
     askit
