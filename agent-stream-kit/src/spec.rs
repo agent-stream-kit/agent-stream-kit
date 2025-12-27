@@ -13,10 +13,6 @@ pub type AgentStreamSpecs = FnvIndexMap<String, AgentStreamSpec>;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct AgentStreamSpec {
-    #[deprecated(note = "Use AgentStream::name instead")]
-    #[serde(skip_serializing_if = "String::is_empty", default)]
-    pub name: String,
-
     pub agents: im::Vector<AgentSpec>,
 
     pub channels: im::Vector<ChannelSpec>,
@@ -29,14 +25,6 @@ pub struct AgentStreamSpec {
 }
 
 impl AgentStreamSpec {
-    #[deprecated(note = "Use default()")]
-    pub fn new(name: String) -> Self {
-        Self {
-            name,
-            ..Default::default()
-        }
-    }
-
     pub fn add_agent(&mut self, agent: AgentSpec) {
         self.agents.push_back(agent);
     }
@@ -44,14 +32,6 @@ impl AgentStreamSpec {
     pub fn remove_agent(&mut self, agent_id: &str) {
         self.agents.retain(|agent| agent.id != agent_id);
     }
-
-    // pub fn set_agents(&mut self, agents: im::Vector<AgentSpec>) {
-    //     self.agents = agents;
-    // }
-
-    // pub fn channels(&self) -> &Vec<ChannelSpec> {
-    //     &self.channels
-    // }
 
     pub fn add_channels(&mut self, channel: ChannelSpec) {
         self.channels.push_back(channel);
@@ -70,24 +50,6 @@ impl AgentStreamSpec {
             None
         }
     }
-
-    // pub fn set_channels(&mut self, channels: Vec<ChannelSpec>) {
-    //     self.channels = channels;
-    // }
-
-    // pub fn run_on_start(&self) -> bool {
-    //     self.run_on_start
-    // }
-
-    // pub fn set_run_on_start(&mut self, run_on_start: bool) {
-    //     self.run_on_start = run_on_start;
-    // }
-
-    // pub fn disable_all_nodes(&mut self) {
-    //     for node in self.agents.iter_mut() {
-    //         node.enabled = false;
-    //     }
-    // }
 
     pub fn to_json(&self) -> Result<String, AgentError> {
         let json = serde_json::to_string_pretty(self)

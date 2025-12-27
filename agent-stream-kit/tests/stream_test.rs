@@ -26,17 +26,10 @@ fn test_agent_spec_from_def() {
 // AgentStream
 
 #[test]
-fn test_agent_stream_spec_new() {
-    let spec = AgentStreamSpec::new("test_stream".into());
-
-    assert_eq!(spec.name, "test_stream");
-}
-
-#[test]
 fn test_agent_stream_add_agent() {
     let askit = ASKit::init().unwrap();
 
-    let mut spec = AgentStreamSpec::new("test_stream".into());
+    let mut spec = AgentStreamSpec::default();
     assert_eq!(spec.agents.len(), 0);
 
     let def = askit.get_agent_definition(COUNTER_DEF).unwrap();
@@ -51,7 +44,7 @@ fn test_agent_stream_add_agent() {
 fn test_agent_stream_remove_agent() {
     let askit = ASKit::init().unwrap();
 
-    let mut spec = AgentStreamSpec::new("test_stream".into());
+    let mut spec = AgentStreamSpec::default();
     assert_eq!(spec.agents.len(), 0);
 
     let def = askit.get_agent_definition(COUNTER_DEF).unwrap();

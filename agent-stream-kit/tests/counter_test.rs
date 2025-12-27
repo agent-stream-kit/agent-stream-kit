@@ -86,7 +86,7 @@ async fn test_agent_process() {
     let counter_id = counter_spec.id.clone();
     let probe_id = probe_spec.id.clone();
 
-    let mut spec = AgentStreamSpec::new("counter_probe_stream".into());
+    let mut spec = AgentStreamSpec::default();
     spec.add_agent(counter_spec);
     spec.add_agent(probe_spec);
     spec.add_channels(ChannelSpec {
