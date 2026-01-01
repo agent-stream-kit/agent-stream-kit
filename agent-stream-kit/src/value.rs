@@ -287,9 +287,28 @@ impl AgentValue {
     }
 
     #[cfg(feature = "image")]
-    pub fn as_image(&self) -> Option<Arc<PhotonImage>> {
+    pub fn as_image(&self) -> Option<&PhotonImage> {
         match self {
-            AgentValue::Image(img) => Some(img.clone()),
+            AgentValue::Image(img) => Some(img),
+            _ => None,
+        }
+    }
+
+    #[cfg(feature = "image")]
+    /// If self is an Image, get a mutable reference to the inner PhotonImage.
+    pub fn as_image_mut(&mut self) -> Option<&mut PhotonImage> {
+        match self {
+            AgentValue::Image(img) => Some(Arc::make_mut(img)),
+            _ => None,
+        }
+    }
+
+    #[cfg(feature = "image")]
+    /// If self is an Image, extract the inner PhotonImage; otherwise, return None.
+    /// This consumes self.
+    pub fn into_image(self) -> Option<Arc<PhotonImage>> {
+        match self {
+            AgentValue::Image(img) => Some(img),
             _ => None,
         }
     }
@@ -302,6 +321,15 @@ impl AgentValue {
     }
 
     pub fn as_object_mut(&mut self) -> Option<&mut AgentValueMap<String, AgentValue>> {
+        match self {
+            AgentValue::Object(o) => Some(o),
+            _ => None,
+        }
+    }
+
+    /// If self is an Object, extract the inner HashMap; otherwise, return None.
+    /// This consumes self.
+    pub fn into_object(self) -> Option<AgentValueMap<String, AgentValue>> {
         match self {
             AgentValue::Object(o) => Some(o),
             _ => None,
@@ -322,6 +350,15 @@ impl AgentValue {
         }
     }
 
+    /// If self is an Array, extract the inner Vector; otherwise, return None.
+    /// This consumes self.
+    pub fn into_array(self) -> Option<Vector<AgentValue>> {
+        match self {
+            AgentValue::Array(a) => Some(a),
+            _ => None,
+        }
+    }
+
     pub fn as_tensor(&self) -> Option<&Vec<f32>> {
         match self {
             AgentValue::Tensor(t) => Some(t),
@@ -331,7 +368,27 @@ impl AgentValue {
 
     pub fn as_tensor_mut(&mut self) -> Option<&mut Vec<f32>> {
         match self {
-            AgentValue::Tensor(t) => Arc::get_mut(t),
+            AgentValue::Tensor(t) => Some(Arc::make_mut(t)),
+            _ => None,
+        }
+    }
+
+    /// If self is a Tensor, extract the inner Vec; otherwise, return None.
+    /// This consumes self.
+    pub fn into_tensor(self) -> Option<Arc<Vec<f32>>> {
+        match self {
+            AgentValue::Tensor(t) => Some(t),
+            _ => None,
+        }
+    }
+
+    /// If self is a Tensor, extract the inner Vec; otherwise, return None.
+    ///
+    /// This consumes self.
+    /// Possibly O(n) copy.
+    pub fn into_tensor_vec(self) -> Option<Vec<f32>> {
+        match self {
+            AgentValue::Tensor(t) => Some(Arc::unwrap_or_clone(t)),
             _ => None,
         }
     }
@@ -363,8 +420,13 @@ impl AgentValue {
     }
 
     #[cfg(feature = "image")]
-    pub fn get_image(&self, key: &str) -> Option<Arc<PhotonImage>> {
+    pub fn get_image(&self, key: &str) -> Option<&PhotonImage> {
         self.get(key).and_then(|v| v.as_image())
+    }
+
+    #[cfg(feature = "image")]
+    pub fn get_image_mut(&mut self, key: &str) -> Option<&mut PhotonImage> {
+        self.get_mut(key).and_then(|v| v.as_image_mut())
     }
 
     pub fn get_object(&self, key: &str) -> Option<&AgentValueMap<String, AgentValue>> {
